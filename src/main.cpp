@@ -12,33 +12,51 @@ Thermostat thermo;
 
 bool isOnline = false;
 unsigned long last_weather_update = 0;
-bool time_synced = false; 
 
+// Funzione per scaricare il meteo
 void fetch_weather() {
-    if (WiFi.status() != WL_CONNECTED) return;
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("METEO: WiFi non connesso!");
+        return;
+    }
 
     Serial.println("--- Avvio Aggiornamento Meteo ---");
-    
-    String city = String(configManager.data.weatherCity);
-    city.trim();
-    String country = String(configManager.data.weatherCountry);
-    country.trim();
-    String key = String(configManager.data.weatherKey);
-    key.trim();
-
     HTTPClient http;
-    String url = "http://api.openweathermap.org/data/2.5/weather?q=" + city + "," + country + "&appid=" + key + "&units=metric&lang=it";
+    
+    // Trim per sicurezza (rimuove spazi accidentali)
+    String city = String(configManager.data.weatherCity);
+    String country = String(configManager.data.weatherCountry);
+    String apiKey = String(configManager.data.weatherKey);
+    city.trim();
+    country.trim();
+    apiKey.trim();
+    
+    String url = "http://api.openweathermap.org/data/2.5/weather?q=";
+    url += city;
+    url += ",";
+    url += country;
+    url += "&appid=";
+    url += apiKey;
+    url += "&units=metric&lang=it";
 
+    Serial.printf("URL: %s\n", url.c_str());
+    
+    http.setTimeout(10000); // Timeout 10 secondi
     http.begin(url);
+    
+    Serial.println("Invio richiesta HTTP...");
     int httpCode = http.GET();
+    Serial.printf("HTTP Code: %d\n", httpCode);
 
     if (httpCode > 0) {
         if (httpCode == HTTP_CODE_OK) {
             String payload = http.getString();
+            Serial.printf("Payload ricevuto (%d bytes)\n", payload.length());
+            
             DynamicJsonDocument doc(2048);
-            deserializeJson(doc, payload);
+            DeserializationError error = deserializeJson(doc, payload);
 
-            if (!doc.isNull()) {
+            if (!error) {
                 float temp = doc["main"]["temp"];
                 const char* desc = doc["weather"][0]["description"];
                 
@@ -47,40 +65,69 @@ void fetch_weather() {
 
                 update_weather_ui(String(temp, 1), descStr);
                 Serial.printf("Meteo OK: %.1f C, %s\n", temp, descStr.c_str());
+            } else {
+                Serial.printf("Errore JSON: %s\n", error.c_str());
+                Serial.println("Payload:");
+                Serial.println(payload);
             }
         } else {
-            Serial.printf("ERRORE HTTP Meteo: %d\n", httpCode);
-            update_weather_ui("Err", String(httpCode));
+            Serial.printf("HTTP Code non OK: %d\n", httpCode);
+            String response = http.getString();
+            Serial.println("Risposta server:");
+            Serial.println(response);
         }
     } else {
-        Serial.printf("Errore Connessione Meteo: %s\n", http.errorToString(httpCode).c_str());
+        Serial.printf("Errore HTTP: %s (Code: %d)\n", http.errorToString(httpCode).c_str(), httpCode);
     }
     http.end();
+    Serial.println("--- Fine Aggiornamento Meteo ---");
 }
 
 void setup() {
     Serial.begin(115200);
-    delay(1000);
     Serial.println(">> BOOT START");
     
+    // 1. Init Hardware
     smartdisplay_init();
-    create_main_ui(); 
     
-    if(!configManager.begin()) Serial.println("FS Error");
+    // 2. Crea UI (Data/Ora/Meteo)
+    create_main_ui();
+    Serial.println("UI: Widget creati.");
+    
+    // 3. Filesystem
+    if(!configManager.begin()) {
+        Serial.println("FS Error");
+    }
 
+    // 4. Network Setup
     isOnline = setup_network();
     
+    // 5. ATTENDI SINCRONIZZAZIONE NTP (CRITICO!)
     if (isOnline) {
-        // Server NTP Italiani
-        configTime(0, 0, "it.pool.ntp.org", "time.nist.gov", "pool.ntp.org");
-        setenv("TZ", configManager.data.timezone, 1);
-        tzset();
-
+        Serial.println("Attendere sincronizzazione NTP...");
+        struct tm timeinfo;
+        int attempts = 0;
+        while(!getLocalTime(&timeinfo) && attempts < 30) {
+            delay(500);
+            attempts++;
+            Serial.print(".");
+        }
+        
+        if(attempts < 30) {
+            Serial.println("\n>> ORA SINCRONIZZATA!");
+            // Forza primo aggiornamento UI con ora corretta
+            update_ui();
+        } else {
+            Serial.println("\n!! Timeout sincronizzazione NTP");
+        }
+        
+        // 6. Primo aggiornamento meteo
         fetch_weather();
+        last_weather_update = millis();
+        
+        // 7. Avvia Web Server
         setup_web_server();
         Serial.println(">> SISTEMA ONLINE E PRONTO");
-    } else {
-        Serial.println(">> AVVIO OFFLINE");
     }
 }
 
@@ -88,28 +135,11 @@ void loop() {
     lv_timer_handler();
     
     static unsigned long last_ui_update = 0;
-    static unsigned long last_heartbeat = 0;
 
-    // Aggiorna UI ogni 500ms
-    if (millis() - last_ui_update > 500) {
+    // Aggiorna orologio ogni secondo
+    if (millis() - last_ui_update > 1000) {
         update_ui(); 
-        
-        // Controllo NTP (stampa una volta sola)
-        if (!time_synced) {
-            struct tm timeinfo;
-            if (getLocalTime(&timeinfo, 0)) { 
-                time_synced = true;
-                Serial.println(">> ORA SINCRONIZZATA!");
-            }
-        }
-
         last_ui_update = millis();
-    }
-
-    // Heartbeat seriale ogni 5 secondi
-    if (millis() - last_heartbeat > 5000) {
-        Serial.println("[LOOP] Alive... WiFi Status: " + String(WiFi.status()));
-        last_heartbeat = millis();
     }
 
     // Aggiorna meteo ogni 10 minuti

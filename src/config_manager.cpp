@@ -31,13 +31,24 @@ bool ConfigManager::loadConfig() {
         return false;
     }
 
-    strlcpy(data.weatherKey, doc["weatherKey"] | "", sizeof(data.weatherKey));
-    strlcpy(data.weatherCity, doc["weatherCity"] | "Rome", sizeof(data.weatherCity));
-    strlcpy(data.weatherCountry, doc["weatherCountry"] | "IT", sizeof(data.weatherCountry));
-    strlcpy(data.timezone, doc["timezone"] | "CET-1CEST,M3.5.0,M10.5.0/3", sizeof(data.timezone));
+    // Carica i valori e applica TRIM per rimuovere spazi
+    String wkey = String(doc["weatherKey"] | "");
+    String city = String(doc["weatherCity"] | "Rome");
+    String country = String(doc["weatherCountry"] | "IT");
+    String tz = String(doc["timezone"] | "CET-1CEST,M3.5.0,M10.5.0/3");
+    
+    wkey.trim();
+    city.trim();
+    country.trim();
+    tz.trim();
+    
+    strlcpy(data.weatherKey, wkey.c_str(), sizeof(data.weatherKey));
+    strlcpy(data.weatherCity, city.c_str(), sizeof(data.weatherCity));
+    strlcpy(data.weatherCountry, country.c_str(), sizeof(data.weatherCountry));
+    strlcpy(data.timezone, tz.c_str(), sizeof(data.timezone));
 
     file.close();
-    Serial.println("Config caricata.");
+    Serial.printf("Config caricata: City='%s' Country='%s'\n", data.weatherCity, data.weatherCountry);
     return true;
 }
 

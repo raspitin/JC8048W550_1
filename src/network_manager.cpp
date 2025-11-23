@@ -9,6 +9,13 @@ void saveConfigCallback() {
     shouldSaveConfig = true;
 }
 
+// Funzione helper per rimuovere spazi iniziali e finali
+String trimString(const char* str) {
+    String s = String(str);
+    s.trim();
+    return s;
+}
+
 bool setup_network() {
     // Carica le impostazioni precedenti
     configManager.begin(); 
@@ -43,10 +50,19 @@ bool setup_network() {
     Serial.println(WiFi.localIP());
 
     if (shouldSaveConfig) {
-        strlcpy(configManager.data.weatherKey, custom_wkey.getValue(), sizeof(configManager.data.weatherKey));
-        strlcpy(configManager.data.weatherCity, custom_city.getValue(), sizeof(configManager.data.weatherCity));
-        strlcpy(configManager.data.weatherCountry, custom_country.getValue(), sizeof(configManager.data.weatherCountry));
-        strlcpy(configManager.data.timezone, custom_tz.getValue(), sizeof(configManager.data.timezone));
+        // TRIM dei valori per rimuovere spazi indesiderati
+        String wkey = trimString(custom_wkey.getValue());
+        String city = trimString(custom_city.getValue());
+        String country = trimString(custom_country.getValue());
+        String tz = trimString(custom_tz.getValue());
+        
+        strlcpy(configManager.data.weatherKey, wkey.c_str(), sizeof(configManager.data.weatherKey));
+        strlcpy(configManager.data.weatherCity, city.c_str(), sizeof(configManager.data.weatherCity));
+        strlcpy(configManager.data.weatherCountry, country.c_str(), sizeof(configManager.data.weatherCountry));
+        strlcpy(configManager.data.timezone, tz.c_str(), sizeof(configManager.data.timezone));
+        
+        Serial.printf("Salvati: City='%s' Country='%s'\n", city.c_str(), country.c_str());
+        
         configManager.saveConfig();
     }
 
