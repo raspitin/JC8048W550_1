@@ -13,22 +13,22 @@ void setup() {
     Serial.begin(115200);
     Serial.println(">> BOOT START");
     
-    // 1. Hardware & Display Init
+    // 1. Init Hardware
     smartdisplay_init();
-    
-    // 2. UI Creation
     create_nest_ui(); 
     
-    // 3. Filesystem Init
-    if(!configManager.begin()) {
-        Serial.println("Config Manager Init Failed");
-    }
+    // 2. Filesystem
+    if(!configManager.begin()) Serial.println("Config Init Failed");
 
-    // 4. Network Setup (Blocking if not configured)
+    // 3. Network (Gestisce UI e WiFi)
     isOnline = setup_network();
     
-    // 5. Web Server Init
+    // 4. Web Server
     if (isOnline) {
+        // Ritardo critico per permettere a WiFiManager di liberare la porta 80
+        Serial.println("Attesa pulizia stack di rete...");
+        delay(1000); 
+        
         setup_web_server();
         Serial.println(">> WEB SERVER START");
     } else {
@@ -37,20 +37,16 @@ void setup() {
 }
 
 void loop() {
-    // LVGL Tick
     lv_timer_handler();
     
-    // Application Logic
     static unsigned long last_ui_update = 0;
     static unsigned long last_logic_update = 0;
 
-    // UI Refresh (1 sec)
     if (millis() - last_ui_update > 1000) {
         update_ui(); 
         last_ui_update = millis();
     }
 
-    // Logic Refresh (3 sec)
     if (millis() - last_logic_update > 3000) {
         float t = thermo.readLocalSensor();
         thermo.update(t);

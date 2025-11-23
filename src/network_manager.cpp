@@ -2,8 +2,9 @@
 #include "config_manager.h"
 #include "ui.h"
 #include <WiFiManager.h>
+#include <lvgl.h> // Serve per forzare l'aggiornamento UI qui
 
-WiFiManager wm;
+// Flag globale per il salvataggio
 bool shouldSaveConfig = false;
 
 void saveConfigCallback() {
@@ -11,27 +12,20 @@ void saveConfigCallback() {
     shouldSaveConfig = true;
 }
 
-// CALLBACK CRITICA
+// Callback modalità AP
 void configModeCallback(WiFiManager *myWiFiManager) {
-    Serial.println("!!! CALLBACK AP ATTIVATA !!!");
-    Serial.print("SSID AP Creato: ");
-    Serial.println(myWiFiManager->getConfigPortalSSID());
-    Serial.print("IP AP: ");
-    Serial.println(WiFi.softAPIP());
-    
-    // Recupera il nome dell'AP
+    Serial.println("Entrato in modalità AP Configurazione");
     String ssid = myWiFiManager->getConfigPortalSSID();
-    
-    // Chiama la UI per disegnare il QR
     ui_show_setup_screen(ssid.c_str(), NULL);
 }
 
 bool setup_network() {
     configManager.begin(); 
-
-    // --- BLOCCO RESET ---
-    //wm.resetSettings();  
-    // --------------------
+    
+    // --- ISTANZA LOCALE (IMPORTANTE!) ---
+    // Creandola qui, verrà distrutta alla fine della funzione,
+    // liberando la porta 80 per il tuo Web Server principale.
+    WiFiManager wm;
 
     // Parametri Custom
     WiFiManagerParameter custom_wkey("wkey", "OpenWeather API Key", configManager.data.weatherKey, 64);
@@ -44,40 +38,42 @@ bool setup_network() {
     wm.addParameter(&custom_country);
     wm.addParameter(&custom_tz);
 
-    // Configurazione
+    // Configurazione Callback e Timeout
     wm.setSaveConfigCallback(saveConfigCallback);
-    
-    // Registra la callback per mostrare il QR
-    wm.setAPCallback(configModeCallback); 
-    
-    wm.setConnectTimeout(15); // Timeout connessione router
-    wm.setConfigPortalTimeout(180); // Timeout pagina config
-    
+    wm.setAPCallback(configModeCallback);
+    wm.setConnectTimeout(20);       // 20 sec per provare a connettersi al router
+    wm.setConfigPortalTimeout(180); // 3 min per il QR code
     wm.setDebugOutput(true);
 
-    // 1. Mostra UI "Tentativo..."
-    Serial.println("Network: Inizio fase connessione...");
+    // 1. Mostra UI Attesa
     ui_show_connecting();
 
-    // 2. Avvia
+    // 2. Avvio (Bloccante)
     const char* apName = "Termostato_Setup";
-    
-    // Se la connessione fallisce, WiFiManager chiama configModeCallback internamente
-    // e POI blocca l'esecuzione per gestire il server web.
     bool res = wm.autoConnect(apName);
 
     if (!res) {
-        Serial.println("Network: Timeout o errore connessione.");
+        Serial.println("Network: Fallito.");
         ui_hide_setup_screen();
-        return false; 
+        return false;
     }
 
-    // Connesso
-    ui_hide_setup_screen();
+    // 3. Connesso!
     Serial.println("Network: WiFi Connesso!");
     Serial.print("IP: ");
     Serial.println(WiFi.localIP());
 
+    // Nascondi QR e forza aggiornamento display IMMEDIATO
+    ui_hide_setup_screen();
+    
+    // Forziamo LVGL a ridisegnare subito per togliere il QR code
+    // prima che il codice prosegua
+    for(int i=0; i<10; i++) {
+        lv_timer_handler();
+        delay(10);
+    }
+
+    // Salvataggio parametri
     if (shouldSaveConfig) {
         strlcpy(configManager.data.weatherKey, custom_wkey.getValue(), sizeof(configManager.data.weatherKey));
         strlcpy(configManager.data.weatherCity, custom_city.getValue(), sizeof(configManager.data.weatherCity));
@@ -90,10 +86,13 @@ bool setup_network() {
     setenv("TZ", configManager.data.timezone, 1);
     tzset();
 
+    // Qui wm viene distrutto e la porta 80 liberata
     return true;
 }
 
 void wifi_reset_settings() {
+    // Anche qui istanza locale
+    WiFiManager wm;
     Serial.println("Resetting WiFi...");
     wm.resetSettings();
     configManager.resetToDefault(); 
