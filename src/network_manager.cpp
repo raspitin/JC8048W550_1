@@ -11,8 +11,30 @@ void saveConfigCallback() {
     shouldSaveConfig = true;
 }
 
+// CALLBACK: Viene chiamata SOLO quando entra in modalità AP (Setup)
+void configModeCallback(WiFiManager *myWiFiManager) {
+    Serial.println("Entrato in modalità AP Configurazione");
+    
+    // Recupera il nome dell'AP creato
+    String ssid = myWiFiManager->getConfigPortalSSID();
+    
+    // Mostra il QR code e il nome della rete sul display
+    ui_show_setup_screen(ssid.c_str(), NULL);
+}
+
 bool setup_network() {
     configManager.begin(); 
+
+    // --- SEZIONE RESET ---
+    // Se vuoi cancellare le vecchie reti salvate perché bloccato:
+    // 1. Decommenta la riga qui sotto (togli //)
+    // 2. Carica il codice sull'ESP
+    // 3. Aspetta il riavvio (vedrai "Settings erased" su seriale)
+    // 4. Ricommenta la riga e ricarica il codice per l'uso normale.
+    
+    wm.resetSettings(); // <--- TOGLI IL COMMENTO QUI PER RESETTARE
+    
+    // ---------------------
 
     // Parametri Custom
     WiFiManagerParameter custom_wkey("wkey", "OpenWeather API Key", configManager.data.weatherKey, 64);
@@ -25,33 +47,41 @@ bool setup_network() {
     wm.addParameter(&custom_country);
     wm.addParameter(&custom_tz);
 
+    // Configurazione Callback
     wm.setSaveConfigCallback(saveConfigCallback);
+    wm.setAPCallback(configModeCallback); // Collega la funzione che mostra il QR
     
-    // Timeout aumentato a 180s (3 minuti) per dare tempo di scansionare e connettersi
-    wm.setConfigPortalTimeout(180); 
+    // TIMEOUT FONDAMENTALI
+    // 1. ConnectTimeout: Quanto tempo prova a connettersi al router prima di arrendersi e aprire l'AP.
+    wm.setConnectTimeout(15); // 15 secondi (risolve il blocco "Tentativo in corso...")
+
+    // 2. ConfigPortalTimeout: Quanto tempo l'AP resta aperto per farti scansionare il QR.
+    wm.setConfigPortalTimeout(180); // 3 minuti
+    
     wm.setDebugOutput(true);
 
-    const char* apName = "Termostato_Setup";
-    
-    // MOSTRA LA SCHERMATA PRIMA DI CONNETTERE
-    Serial.println("Mostro QR Code setup...");
-    ui_show_setup_screen(apName, NULL); 
-    
-    // Un piccolo delay extra per sicurezza, anche se ui_show_setup_screen ora ha un loop interno
-    delay(100);
+    // 1. Mostra stato "Connessione..." (Schermata intermedia)
+    ui_show_connecting();
 
-    // Avvia WiFiManager (Bloccante)
-    Serial.println("Avvio WiFiManager...");
+    // 2. Avvio automatico
+    // - Se ha credenziali valide: si connette entro 15s.
+    // - Se fallisce o non ha credenziali: Apre AP, chiama configModeCallback -> Mostra QR.
+    const char* apName = "Termostato_Setup";
     bool res = wm.autoConnect(apName);
 
     if (!res) {
-        Serial.println("Connessione fallita o timeout.");
+        Serial.println("Timeout Configurazione o Connessione fallita.");
+        // Se siamo qui, è scaduto il tempo del portale (3 min) senza successo.
+        // Nascondiamo il QR e proseguiamo offline.
         ui_hide_setup_screen();
         return false;
     }
 
+    // Se siamo qui, siamo connessi a Internet
     ui_hide_setup_screen();
     Serial.println("WiFi Connesso!");
+    Serial.print("IP: ");
+    Serial.println(WiFi.localIP());
 
     if (shouldSaveConfig) {
         strlcpy(configManager.data.weatherKey, custom_wkey.getValue(), sizeof(configManager.data.weatherKey));
