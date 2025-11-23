@@ -110,7 +110,6 @@ void create_nest_ui() {
     lv_qrcode_set_light_color(qr_code, lv_color_hex(0xFFFFFF));
     lv_obj_set_style_border_color(qr_code, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_width(qr_code, 5, 0);
-    // QR Code leggermente spostato verso l'alto per fare spazio al testo sotto
     lv_obj_align(qr_code, LV_ALIGN_CENTER, 0, -20);
 
     // SSID Label (Posizionata SUBITO SOTTO il QR Code)
@@ -123,7 +122,7 @@ void create_nest_ui() {
     lv_label_set_text(lbl_wifi_ip, "In attesa...");
 }
 
-// Mostra stato "Connessione in corso..." (senza QR Code)
+// Stato 1: Connessione in corso
 void ui_show_connecting() {
     if (!obj_wifi_alert) return;
     
@@ -132,26 +131,30 @@ void ui_show_connecting() {
     lv_label_set_text(lbl_wifi_msg, "CONNESSIONE WIFI...");
     lv_label_set_text(lbl_wifi_ip, "Tentativo in corso...");
     
-    // Puoi nascondere il QR o mostrare un placeholder vuoto se vuoi
-    // lv_qrcode_update(qr_code, "", 0); 
-    
+    // Forza rendering
     lv_timer_handler();
 }
 
-// Mostra la schermata di SETUP con il QR CODE
+// Stato 2: AP Attivo - Mostra QR Code
 void ui_show_setup_screen(const char* ssid, const char* pass) {
-    if (!obj_wifi_alert) return;
+    if (!obj_wifi_alert) {
+        Serial.println("ERRORE: Oggetto UI non inizializzato!");
+        return;
+    }
     
+    Serial.println("UI: Aggiornamento schermata Setup...");
+
+    // Assicurati che sia visibile
     lv_obj_remove_flag(obj_wifi_alert, LV_OBJ_FLAG_HIDDEN);
     
-    lv_label_set_text(lbl_wifi_msg, "SCANSIONA PER CONFIGURARE");
+    // Aggiorna Testi
+    lv_label_set_text(lbl_wifi_msg, "SCANSIONA ORA!");
 
-    // Mostra il nome della rete AP che è stata creata
     char ssid_msg[64];
-    snprintf(ssid_msg, sizeof(ssid_msg), "Rete AP: %s", ssid);
+    snprintf(ssid_msg, sizeof(ssid_msg), "WiFi AP: %s", ssid);
     lv_label_set_text(lbl_wifi_ip, ssid_msg);
 
-    // Genera stringa QR Code
+    // Genera QR
     char qr_data[128];
     if (pass && strlen(pass) > 0) {
         snprintf(qr_data, sizeof(qr_data), "WIFI:S:%s;T:WPA;P:%s;;", ssid, pass);
@@ -159,15 +162,19 @@ void ui_show_setup_screen(const char* ssid, const char* pass) {
         snprintf(qr_data, sizeof(qr_data), "WIFI:S:%s;T:nopass;;", ssid);
     }
     
-    // Aggiorna grafica QR
     lv_qrcode_update(qr_code, qr_data, strlen(qr_data));
     
-    // Forza rendering multiplo per assicurare l'aggiornamento a video
-    // prima che il WiFiManager o altre funzioni blocchino l'esecuzione.
-    for(int i=0; i<20; i++) {
+    // --- REFRESH AGGRESSIVO ---
+    // Chiamiamo lv_timer_handler molte volte con un piccolo delay
+    // per dare tempo al controller grafico di disegnare TUTTO
+    // prima che il WiFiManager prenda il controllo esclusivo.
+    Serial.println("UI: Forzatura rendering...");
+    for(int i=0; i<100; i++) { // Aumentato a 100 cicli (~1 secondo)
         lv_timer_handler();
         delay(10);
+        if(i % 20 == 0) Serial.print("."); // Debug heartbeat
     }
+    Serial.println("\nUI: Rendering completato. Blocco WiFiManager in arrivo.");
 }
 
 void ui_hide_setup_screen() {
@@ -175,11 +182,10 @@ void ui_hide_setup_screen() {
 }
 
 void update_ui() {
-    // Se connesso, nascondi il popup setup
     if (WiFi.status() == WL_CONNECTED) {
         ui_hide_setup_screen();
         
-        // Aggiorna stato riscaldamento (colori)
+        // Aggiorna stato riscaldamento
         if(thermo.isHeatingState()) {
             lv_obj_set_style_arc_color(arc_target, lv_color_hex(0xFF4500), LV_PART_INDICATOR);
             lv_label_set_text(lbl_status, "RISCALDAMENTO");
@@ -191,10 +197,8 @@ void update_ui() {
         }
     } 
 
-    // Aggiorna temperatura corrente
     lv_label_set_text_fmt(lbl_cur_temp, "%.1f°", thermo.getCurrentTemp());
 
-    // Aggiorna orologio
     struct tm timeinfo;
     if(getLocalTime(&timeinfo)){
         char timeStringBuff[10]; 
@@ -202,7 +206,7 @@ void update_ui() {
         lv_label_set_text(lbl_clock, timeStringBuff);
     }
     
-    // Debug touch (coordinate)
+    // Debug touch
     lv_indev_t * indev = lv_indev_get_next(NULL);
     if(indev) {
         lv_point_t p;

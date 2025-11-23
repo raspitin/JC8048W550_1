@@ -11,30 +11,27 @@ void saveConfigCallback() {
     shouldSaveConfig = true;
 }
 
-// CALLBACK: Viene chiamata SOLO quando entra in modalità AP (Setup)
+// CALLBACK CRITICA
 void configModeCallback(WiFiManager *myWiFiManager) {
-    Serial.println("Entrato in modalità AP Configurazione");
+    Serial.println("!!! CALLBACK AP ATTIVATA !!!");
+    Serial.print("SSID AP Creato: ");
+    Serial.println(myWiFiManager->getConfigPortalSSID());
+    Serial.print("IP AP: ");
+    Serial.println(WiFi.softAPIP());
     
-    // Recupera il nome dell'AP creato
+    // Recupera il nome dell'AP
     String ssid = myWiFiManager->getConfigPortalSSID();
     
-    // Mostra il QR code e il nome della rete sul display
+    // Chiama la UI per disegnare il QR
     ui_show_setup_screen(ssid.c_str(), NULL);
 }
 
 bool setup_network() {
     configManager.begin(); 
 
-    // --- SEZIONE RESET ---
-    // Se vuoi cancellare le vecchie reti salvate perché bloccato:
-    // 1. Decommenta la riga qui sotto (togli //)
-    // 2. Carica il codice sull'ESP
-    // 3. Aspetta il riavvio (vedrai "Settings erased" su seriale)
-    // 4. Ricommenta la riga e ricarica il codice per l'uso normale.
-    
-    wm.resetSettings(); // <--- TOGLI IL COMMENTO QUI PER RESETTARE
-    
-    // ---------------------
+    // --- BLOCCO RESET ---
+    //wm.resetSettings();  
+    // --------------------
 
     // Parametri Custom
     WiFiManagerParameter custom_wkey("wkey", "OpenWeather API Key", configManager.data.weatherKey, 64);
@@ -47,39 +44,37 @@ bool setup_network() {
     wm.addParameter(&custom_country);
     wm.addParameter(&custom_tz);
 
-    // Configurazione Callback
+    // Configurazione
     wm.setSaveConfigCallback(saveConfigCallback);
-    wm.setAPCallback(configModeCallback); // Collega la funzione che mostra il QR
     
-    // TIMEOUT FONDAMENTALI
-    // 1. ConnectTimeout: Quanto tempo prova a connettersi al router prima di arrendersi e aprire l'AP.
-    wm.setConnectTimeout(15); // 15 secondi (risolve il blocco "Tentativo in corso...")
-
-    // 2. ConfigPortalTimeout: Quanto tempo l'AP resta aperto per farti scansionare il QR.
-    wm.setConfigPortalTimeout(180); // 3 minuti
+    // Registra la callback per mostrare il QR
+    wm.setAPCallback(configModeCallback); 
+    
+    wm.setConnectTimeout(15); // Timeout connessione router
+    wm.setConfigPortalTimeout(180); // Timeout pagina config
     
     wm.setDebugOutput(true);
 
-    // 1. Mostra stato "Connessione..." (Schermata intermedia)
+    // 1. Mostra UI "Tentativo..."
+    Serial.println("Network: Inizio fase connessione...");
     ui_show_connecting();
 
-    // 2. Avvio automatico
-    // - Se ha credenziali valide: si connette entro 15s.
-    // - Se fallisce o non ha credenziali: Apre AP, chiama configModeCallback -> Mostra QR.
+    // 2. Avvia
     const char* apName = "Termostato_Setup";
+    
+    // Se la connessione fallisce, WiFiManager chiama configModeCallback internamente
+    // e POI blocca l'esecuzione per gestire il server web.
     bool res = wm.autoConnect(apName);
 
     if (!res) {
-        Serial.println("Timeout Configurazione o Connessione fallita.");
-        // Se siamo qui, è scaduto il tempo del portale (3 min) senza successo.
-        // Nascondiamo il QR e proseguiamo offline.
+        Serial.println("Network: Timeout o errore connessione.");
         ui_hide_setup_screen();
-        return false;
+        return false; 
     }
 
-    // Se siamo qui, siamo connessi a Internet
+    // Connesso
     ui_hide_setup_screen();
-    Serial.println("WiFi Connesso!");
+    Serial.println("Network: WiFi Connesso!");
     Serial.print("IP: ");
     Serial.println(WiFi.localIP());
 
