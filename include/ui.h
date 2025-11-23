@@ -2,16 +2,16 @@
 #define UI_H
 #include <Arduino.h>
 
-// Inizializza tutte le schermate e la navigazione
+// Inizializza tutte le schermate (Home, Caldaia, Setup, Impegni)
 void ui_init_all();
 
-// Aggiorna i dati dinamici (chiama nel loop)
+// Aggiorna i dati dinamici (Orario, WiFi, ecc.)
 void update_ui();
 
 // Aggiorna meteo corrente
 void update_current_weather(String temp, String desc, String iconCode);
 
-// Aggiorna previsioni
+// Aggiorna un box previsione
 void update_forecast_item(int index, String day, String temp, String iconCode);
 
 #endif
