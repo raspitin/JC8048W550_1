@@ -2,11 +2,16 @@
 #include <esp32_smartdisplay.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <esp_task_wdt.h> // Watchdog
+
 #include "ui.h"
 #include "network_manager.h"
 #include "config_manager.h"
 #include "web_interface.h"
 #include "thermostat.h"
+
+// Configurazione Watchdog: 10 secondi di timeout
+#define WDT_TIMEOUT 10
 
 Thermostat thermo;
 
@@ -15,30 +20,30 @@ unsigned long last_weather_update = 0;
 unsigned long last_tick_millis = 0;
 bool time_synced = false; 
 
-// Mappa giorni settimana
 const char* weekDays[] = {"DOM", "LUN", "MAR", "MER", "GIO", "VEN", "SAB"};
 
 void fetch_weather() {
     if (WiFi.status() != WL_CONNECTED) return;
 
-    Serial.println("--- Scaricamento Previsioni (Forecast) ---");
+    // Reset WDT anche qui per operazioni lunghe
+    esp_task_wdt_reset();
+
+    Serial.println("--- Scaricamento Previsioni ---");
     
     String city = String(configManager.data.weatherCity); city.trim();
     String country = String(configManager.data.weatherCountry); country.trim();
     String key = String(configManager.data.weatherKey); key.trim();
 
     HTTPClient http;
-    // API Forecast (5 giorni, step di 3 ore)
-    // cnt=40 scarica circa 5 giorni completi
     String url = "http://api.openweathermap.org/data/2.5/forecast?q=" + city + "," + country + "&appid=" + key + "&units=metric&lang=it&cnt=40";
 
+    http.setTimeout(5000); // Timeout HTTP ridotto a 5s per non bloccare troppo
     http.begin(url);
     int httpCode = http.GET();
 
     if (httpCode == HTTP_CODE_OK) {
         WiFiClient *stream = http.getStreamPtr();
         
-        // Filtro JSON per risparmiare memoria (il JSON completo è enorme)
         StaticJsonDocument<200> filter;
         filter["list"][0]["dt"] = true;
         filter["list"][0]["main"]["temp"] = true;
@@ -46,7 +51,6 @@ void fetch_weather() {
         filter["list"][0]["weather"][0]["icon"] = true;
         filter["list"][0]["dt_txt"] = true;
 
-        // Buffer aumentato per gestire la lista
         DynamicJsonDocument doc(32768); 
         DeserializationError error = deserializeJson(doc, *stream, DeserializationOption::Filter(filter));
 
@@ -62,53 +66,50 @@ void fetch_weather() {
                 struct tm* timeinfo = localtime(&ts);
                 int current_wday = timeinfo->tm_mday;
 
-                // 1. Meteo Attuale (Prendiamo il primo slot disponibile come "adesso")
                 if (!currentSet) {
                     float temp = item["main"]["temp"];
                     const char* desc = item["weather"][0]["description"];
                     const char* icon = item["weather"][0]["icon"];
                     String d = String(desc); 
-                    if(d.length() > 0) d[0] = toupper(d[0]); // Capitalizza
+                    if(d.length() > 0) d[0] = toupper(d[0]);
 
-                    // Chiama la funzione corretta della nuova UI
                     update_current_weather(String(temp, 1), d, String(icon));
-                    
                     currentSet = true;
-                    lastDay = current_wday; // Segna oggi come fatto
+                    lastDay = current_wday;
                 }
 
-                // 2. Previsioni Giorni Successivi
-                // Cerchiamo uno slot attorno a mezzogiorno (12:00) per ogni giorno diverso da oggi
-                // dt_txt è utile ma costoso, usiamo l'ora dalla struct tm
                 if (current_wday != lastDay && timeinfo->tm_hour >= 11 && timeinfo->tm_hour <= 14 && dayIndex < 5) {
                     float temp = item["main"]["temp"];
                     const char* icon = item["weather"][0]["icon"];
                     String dayName = weekDays[timeinfo->tm_wday];
 
                     update_forecast_item(dayIndex, dayName, String(temp, 0), String(icon));
-                    
                     dayIndex++;
-                    lastDay = current_wday; // Passa al prossimo giorno
+                    lastDay = current_wday;
                 }
             }
-            Serial.println("Meteo aggiornato con successo.");
+            Serial.println("Meteo Aggiornato.");
         } else {
-            Serial.print("JSON Error: ");
-            Serial.println(error.c_str());
+            Serial.print("JSON Error: "); Serial.println(error.c_str());
         }
     } else {
         Serial.printf("Err HTTP: %d\n", httpCode);
     }
     http.end();
+    
+    // Reset WDT post download
+    esp_task_wdt_reset();
 }
 
 void setup() {
     Serial.begin(115200);
     delay(1000);
     
-    smartdisplay_init();
+    // 1. Inizializza Watchdog
+    esp_task_wdt_init(WDT_TIMEOUT, true); // Panic = true (riavvia)
+    esp_task_wdt_add(NULL); // Aggiungi il thread corrente (loop)
     
-    // --- FIX ERRORE: Chiama la funzione corretta ---
+    smartdisplay_init();
     ui_init_all(); 
     
     last_tick_millis = millis();
@@ -128,18 +129,21 @@ void setup() {
 }
 
 void loop() {
-    // Gestione Tempo LVGL
+    // Nutri il cane da guardia!
+    esp_task_wdt_reset();
+
     unsigned long current_millis = millis();
     lv_tick_inc(current_millis - last_tick_millis);
     last_tick_millis = current_millis;
+    
     lv_timer_handler();
     
     static unsigned long last_ui_update = 0;
-    static unsigned long last_heartbeat = 0;
 
-    // Aggiorna UI
     if (current_millis - last_ui_update > 500) {
         update_ui(); 
+        
+        // Sync NTP check one-shot
         if (!time_synced) {
             struct tm timeinfo;
             if (getLocalTime(&timeinfo, 0)) time_synced = true;
@@ -147,7 +151,6 @@ void loop() {
         last_ui_update = current_millis;
     }
 
-    // Aggiorna meteo ogni 30 minuti (per non consumare troppe chiamate API con il Forecast)
     if (isOnline && (current_millis - last_weather_update > 1800000)) {
         fetch_weather();
         last_weather_update = current_millis;
