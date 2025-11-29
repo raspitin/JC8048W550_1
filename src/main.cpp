@@ -2,7 +2,7 @@
 #include <esp32_smartdisplay.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include "ui.h"
+#include "ui.h" // <--- Questo ora contiene le definizioni corrette
 #include "network_manager.h"
 #include "config_manager.h"
 #include "web_interface.h"
@@ -12,106 +12,93 @@ Thermostat thermo;
 
 bool isOnline = false;
 unsigned long last_weather_update = 0;
-unsigned long last_tick_millis = 0;
-bool time_synced = false; 
-const char* weekDays[] = {"DOM", "LUN", "MAR", "MER", "GIO", "VEN", "SAB"};
+unsigned long last_tick_millis = 0; // Variabile per il tick LVGL
 
 void fetch_weather() {
     if (WiFi.status() != WL_CONNECTED) return;
-    Serial.println("--- Scaricamento Previsioni ---");
+
+    Serial.println("--- Avvio Aggiornamento Meteo ---");
+    HTTPClient http;
     
     String city = String(configManager.data.weatherCity); city.trim();
     String country = String(configManager.data.weatherCountry); country.trim();
-    String key = String(configManager.data.weatherKey); key.trim();
+    String apiKey = String(configManager.data.weatherKey); apiKey.trim();
+    
+    String url = "http://api.openweathermap.org/data/2.5/weather?q=" + city + "," + country + "&appid=" + apiKey + "&units=metric&lang=it";
 
-    HTTPClient http;
-    String url = "http://api.openweathermap.org/data/2.5/forecast?q=" + city + "," + country + "&appid=" + key + "&units=metric&lang=it&cnt=40";
-
+    http.setTimeout(10000);
     http.begin(url);
     int httpCode = http.GET();
 
     if (httpCode == HTTP_CODE_OK) {
-        WiFiClient *stream = http.getStreamPtr();
-        StaticJsonDocument<200> filter;
-        filter["list"][0]["dt"] = true;
-        filter["list"][0]["main"]["temp"] = true;
-        filter["list"][0]["weather"][0]["description"] = true;
-        filter["list"][0]["weather"][0]["icon"] = true;
-        filter["list"][0]["dt_txt"] = true;
-
-        DynamicJsonDocument doc(32768); 
-        DeserializationError error = deserializeJson(doc, *stream, DeserializationOption::Filter(filter));
+        String payload = http.getString();
+        DynamicJsonDocument doc(2048);
+        DeserializationError error = deserializeJson(doc, payload);
 
         if (!error) {
-            JsonArray list = doc["list"];
-            int dayIndex = 0;
-            bool currentSet = false;
+            float temp = doc["main"]["temp"];
+            const char* desc = doc["weather"][0]["description"];
+            String descStr = String(desc);
+            if(descStr.length() > 0) descStr[0] = toupper(descStr[0]);
 
-            for (JsonObject item : list) {
-                String dt_txt = item["dt_txt"].as<String>();
-                if (!currentSet) {
-                    float temp = item["main"]["temp"];
-                    const char* desc = item["weather"][0]["description"];
-                    const char* icon = item["weather"][0]["icon"];
-                    String d = String(desc); d[0] = toupper(d[0]);
-                    update_current_weather(String(temp, 1), d, String(icon));
-                    currentSet = true;
-                }
-                if (dt_txt.indexOf("12:00:00") >= 0 && dayIndex < 5) {
-                    float temp = item["main"]["temp"];
-                    const char* icon = item["weather"][0]["icon"];
-                    time_t ts = (time_t)((long)item["dt"]);
-                    struct tm* timeinfo = localtime(&ts);
-                    String dayName = weekDays[timeinfo->tm_wday];
-                    update_forecast_item(dayIndex, dayName, String(temp, 0), String(icon));
-                    dayIndex++;
-                }
-            }
+            update_weather_ui(String(temp, 1), descStr);
+            Serial.printf("Meteo OK: %.1f C, %s\n", temp, descStr.c_str());
+        } else {
+            Serial.println("Errore JSON");
         }
+    } else {
+        Serial.printf("Errore HTTP: %d\n", httpCode);
     }
     http.end();
 }
 
 void setup() {
     Serial.begin(115200);
-    delay(1000);
+    delay(1000); // Attesa stabilità seriale
+    Serial.println(">> BOOT START");
+    
     smartdisplay_init();
+    create_main_ui(); // Ora questa funzione è riconosciuta grazie a ui.h
     
-    // NUOVA FUNZIONE INIT COMPLETA
-    ui_init_all(); 
-    
-    last_tick_millis = millis();
+    last_tick_millis = millis(); // Inizializza tick
+
     if(!configManager.begin()) Serial.println("FS Error");
+
     isOnline = setup_network();
     
     if (isOnline) {
         configTime(0, 0, "it.pool.ntp.org", "time.nist.gov", "pool.ntp.org");
         setenv("TZ", configManager.data.timezone, 1);
         tzset();
+
         fetch_weather();
         setup_web_server();
+        Serial.println(">> SISTEMA ONLINE E PRONTO");
     }
 }
 
 void loop() {
+    // --- GESTIONE TEMPO LVGL (FONDAMENTALE) ---
     unsigned long current_millis = millis();
     lv_tick_inc(current_millis - last_tick_millis);
     last_tick_millis = current_millis;
-    lv_timer_handler();
-    
+    // ------------------------------------------
+
+    lv_timer_handler(); // Gestisce la grafica
+
     static unsigned long last_ui_update = 0;
-    if (current_millis - last_ui_update > 500) {
-        update_ui(); 
-        if (!time_synced) {
-            struct tm timeinfo;
-            if (getLocalTime(&timeinfo, 0)) time_synced = true;
-        }
+
+    // Aggiorna orologio ogni secondo
+    if (current_millis - last_ui_update >= 1000) {
+        update_ui(); // Ora questa funzione è riconosciuta
         last_ui_update = current_millis;
     }
 
-    if (isOnline && (current_millis - last_weather_update > 1800000)) {
+    // Aggiorna meteo ogni 10 minuti
+    if (isOnline && (current_millis - last_weather_update >= 600000)) {
         fetch_weather();
         last_weather_update = current_millis;
     }
+    
     delay(5);
 }
