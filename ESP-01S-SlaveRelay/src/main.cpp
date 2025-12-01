@@ -35,7 +35,7 @@ void setup() {
 
   // Imposta IP Statico (FONDAMENTALE affinché il Master lo trovi)
   // Modifica questi valori in base alla tua rete!
-  IPAddress local_IP(192, 168, 1, 200);
+  IPAddress local_IP(192, 168, 1, 33);
   IPAddress gateway(192, 168, 1, 1);
   IPAddress subnet(255, 255, 255, 0);
   

@@ -2,20 +2,23 @@
 #define LV_CONF_H
 
 // --- CONFIGURAZIONE MEMORIA ---
-// Aumentiamo drasticamente la memoria heap di LVGL.
-// Avendo la PSRAM, possiamo spingerci oltre i 96KB.
-// 256KB è un ottimo valore per gestire molte schermate e widget.
+// USARE "LV_STDLIB_CLIB" INVECE DI "BUILTIN"
+// Questo dice a LVGL di usare malloc() di sistema.
+// Grazie al flag -D BOARD_HAS_PSRAM in platformio.ini, 
+// malloc() userà automaticamente la PSRAM per le allocazioni grafiche,
+// evitando di intasare la piccola RAM interna (DRAM).
+#define LV_USE_STDLIB_MALLOC    LV_STDLIB_CLIB
+#define LV_USE_STDLIB_STRING    LV_STDLIB_CLIB
+#define LV_USE_STDLIB_SPRINTF   LV_STDLIB_CLIB
+
+// Con CLIB, LV_MEM_SIZE viene ignorato (o usato solo per info), 
+// ma lo lasciamo definito per compatibilità.
 #define LV_MEM_SIZE (256 * 1024U) 
 
 // --- RENDERING ---
 #define LV_COLOR_DEPTH 16
-#define LV_DEF_REFR_PERIOD 33  // 30 FPS (Standard per questi display)
+#define LV_DEF_REFR_PERIOD 33  // ~30 FPS
 #define LV_DPI_DEF 130
-
-// --- FUNZIONI STANDARD ---
-#define LV_USE_STDLIB_MALLOC    LV_STDLIB_BUILTIN
-#define LV_USE_STDLIB_STRING    LV_STDLIB_BUILTIN
-#define LV_USE_STDLIB_SPRINTF   LV_STDLIB_BUILTIN
 
 // --- FONT ABILITATI ---
 #define LV_FONT_MONTSERRAT_14 1
@@ -34,9 +37,11 @@
 #define LV_USE_ROLLER 1
 #define LV_USE_MSGBOX 1
 #define LV_USE_TABVIEW 1
+#define LV_USE_BUTTON 1
 
-// Ottimizzazioni extra
-#define LV_USE_ASSERT_NULL 1   // Aiuta a catturare puntatori nulli
-#define LV_USE_ASSERT_MEM_INTEGRITY 0 // Disabilita in produzione per velocità
+// --- OTTIMIZZAZIONI ---
+// Disabilita assert pesanti in produzione
+#define LV_USE_ASSERT_NULL 0
+#define LV_USE_ASSERT_MEM_INTEGRITY 0
 
 #endif
