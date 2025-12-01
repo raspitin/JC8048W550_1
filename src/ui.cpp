@@ -4,7 +4,7 @@
 #include "config_manager.h"
 #include <WiFi.h>
 #include <time.h>
-#include "config.h"
+#include "config.h" // Necessario per TARGET_HEAT_ON/OFF
 
 // Variabile esterna per il termostato
 #include "thermostat.h"
@@ -51,13 +51,11 @@ lv_obj_t *lbl_edit_temp;
 float temp_editing = 20.0;
 
 // ============================================================================
-//  PROTOTIPI (Dichiarazioni anticipate per ordine corretto)
+//  PROTOTIPI GRAFICI
 // ============================================================================
-
 void clear_icon(lv_obj_t *parent);
 lv_obj_t* draw_circle(lv_obj_t *parent, int w, int h, int x, int y, uint32_t color);
 void draw_cloud_shape(lv_obj_t *parent, int x_offset, int y_offset, uint32_t color);
-
 void draw_icon_sun(lv_obj_t *parent);
 void draw_icon_cloud(lv_obj_t *parent);
 void draw_icon_partly_cloudy(lv_obj_t *parent);
@@ -65,97 +63,8 @@ void draw_icon_rain(lv_obj_t *parent);
 void draw_icon_snow(lv_obj_t *parent);
 void draw_icon_thunder(lv_obj_t *parent);
 void render_weather_icon(lv_obj_t *parent, String code); 
-
 void create_forecast_box(lv_obj_t *parent, int index);
 void create_home_button(lv_obj_t *parent);
-
-// ============================================================================
-//  FUNZIONI GRAFICHE (IMPLEMENTAZIONI)
-// ============================================================================
-
-void clear_icon(lv_obj_t *parent) { 
-    lv_obj_clean(parent); 
-}
-
-lv_obj_t* draw_circle(lv_obj_t *parent, int w, int h, int x, int y, uint32_t color) {
-    lv_obj_t *c = lv_obj_create(parent);
-    lv_obj_set_size(c, w, h);
-    lv_obj_set_style_radius(c, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(c, lv_color_hex(color), 0);
-    lv_obj_set_style_border_width(c, 0, 0);
-    lv_obj_align(c, LV_ALIGN_CENTER, x, y);
-    return c;
-}
-
-void draw_icon_sun(lv_obj_t *parent) {
-    clear_icon(parent);
-    lv_obj_t *rays = lv_obj_create(parent);
-    lv_obj_set_size(rays, 55, 55);
-    lv_obj_set_style_radius(rays, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_opa(rays, 0, 0);
-    lv_obj_set_style_border_color(rays, lv_color_hex(0xF1C40F), 0);
-    lv_obj_set_style_border_width(rays, 2, 0);
-    lv_obj_center(rays);
-    draw_circle(parent, 35, 35, 0, 0, 0xF1C40F);
-}
-
-void draw_cloud_shape(lv_obj_t *parent, int x_offset, int y_offset, uint32_t color) {
-    draw_circle(parent, 25, 25, -12 + x_offset, 5 + y_offset, color); 
-    draw_circle(parent, 25, 25, 12 + x_offset, 5 + y_offset, color);  
-    draw_circle(parent, 35, 35, 0 + x_offset, -5 + y_offset, color);  
-}
-
-void draw_icon_cloud(lv_obj_t *parent) {
-    clear_icon(parent);
-    draw_cloud_shape(parent, 0, 0, 0xBDC3C7);
-}
-
-void draw_icon_partly_cloudy(lv_obj_t *parent) {
-    clear_icon(parent);
-    draw_circle(parent, 30, 30, 10, -10, 0xF1C40F);
-    draw_cloud_shape(parent, -5, 5, 0xFFFFFF);
-}
-
-void draw_icon_rain(lv_obj_t *parent) {
-    clear_icon(parent);
-    for(int i=0; i<3; i++) {
-        lv_obj_t *drop = lv_obj_create(parent);
-        lv_obj_set_size(drop, 4, 10);
-        lv_obj_set_style_bg_color(drop, lv_color_hex(0x3498DB), 0);
-        lv_obj_set_style_radius(drop, 2, 0);
-        lv_obj_set_style_border_width(drop, 0, 0);
-        lv_obj_align(drop, LV_ALIGN_CENTER, (i*12) - 12, 15);
-    }
-    draw_cloud_shape(parent, 0, -5, 0x7F8C8D); 
-}
-
-void draw_icon_thunder(lv_obj_t *parent) {
-    clear_icon(parent);
-    lv_obj_t *bolt = lv_obj_create(parent);
-    lv_obj_set_size(bolt, 8, 25);
-    lv_obj_set_style_bg_color(bolt, lv_color_hex(0xF1C40F), 0);
-    lv_obj_set_style_transform_rotation(bolt, 200, 0);
-    lv_obj_set_style_border_width(bolt, 0, 0);
-    lv_obj_align(bolt, LV_ALIGN_CENTER, 0, 15);
-    draw_cloud_shape(parent, 0, -5, 0x555555);
-}
-
-void draw_icon_snow(lv_obj_t *parent) {
-    clear_icon(parent);
-    for(int i=0; i<3; i++) {
-        draw_circle(parent, 6, 6, (i*12) - 12, 15, 0xFFFFFF);
-    }
-    draw_cloud_shape(parent, 0, -5, 0xBDC3C7);
-}
-
-void render_weather_icon(lv_obj_t *parent, String code) {
-    if (code == "01d" || code == "01n") draw_icon_sun(parent);
-    else if (code == "02d" || code == "02n") draw_icon_partly_cloudy(parent);
-    else if (code.startsWith("09") || code.startsWith("10")) draw_icon_rain(parent);
-    else if (code.startsWith("11")) draw_icon_thunder(parent);
-    else if (code.startsWith("13")) draw_icon_snow(parent);
-    else draw_icon_cloud(parent);
-}
 
 // ============================================================================
 //  NAVIGAZIONE E EVENTI
@@ -210,40 +119,40 @@ void create_home_button(lv_obj_t *parent) {
 }
 
 // ============================================================================
-//  LOGICA PULSANTE MANUALE
+//  LOGICA PULSANTE MANUALE (CORRETTA)
 // ============================================================================
 
 void update_manual_toggle_btn() {
     if(!btn_manual_toggle || !lbl_manual_toggle) return;
 
     if (thermo.isHeatingState()) {
-        lv_obj_set_style_bg_color(btn_manual_toggle, lv_color_hex(0xE67E22), 0); // Caldo
+        lv_obj_set_style_bg_color(btn_manual_toggle, lv_color_hex(0xE67E22), 0); // Arancio Caldo
         lv_label_set_text(lbl_manual_toggle, "Che caldo!!!");
     } else {
-        lv_obj_set_style_bg_color(btn_manual_toggle, lv_color_hex(0x3498DB), 0); // Freddo
+        lv_obj_set_style_bg_color(btn_manual_toggle, lv_color_hex(0x3498DB), 0); // Blu Freddo
         lv_label_set_text(lbl_manual_toggle, "Brr che freddo!!!");
     }
 }
 
 static void manual_toggle_cb(lv_event_t * e) {
     if (thermo.isHeatingState()) {
-        // Voglio spegnere -> Imposto target basso (modalità Eco/Notte)
-        // Così il loop update() confermerà lo spegnimento
-        thermo.setTarget(TARGET_HEAT_OFF); 
+        // Spegni: Imposta target Eco e ferma
+        #ifdef TARGET_HEAT_OFF
+        thermo.setTarget(TARGET_HEAT_OFF);
+        #else
+        thermo.setTarget(16.0);
+        #endif
         thermo.stopHeating();
-        
-        // Aggiorna anche l'arco grafico col nuovo target
-        if(arc_target) lv_arc_set_value(arc_target, (int)TARGET_HEAT_OFF);
-        if(lbl_target_temp) lv_label_set_text_fmt(lbl_target_temp, "%d°C", (int)TARGET_HEAT_OFF);
-        
     } else {
-        // Voglio accendere -> Imposto target alto (modalità Comfort)
+        // Accendi: Imposta target Comfort e avvia
+        #ifdef TARGET_HEAT_ON
         thermo.setTarget(TARGET_HEAT_ON);
+        #else
+        thermo.setTarget(22.0);
+        #endif
         thermo.startHeating();
-        
-        if(arc_target) lv_arc_set_value(arc_target, (int)TARGET_HEAT_ON);
-        if(lbl_target_temp) lv_label_set_text_fmt(lbl_target_temp, "%d°C", (int)TARGET_HEAT_ON);
     }
+    // Nota: Rimossi i riferimenti a arc_target e lbl_target_temp che non esistono più
     
     update_manual_toggle_btn();
 }
@@ -357,11 +266,96 @@ static void slot_click_cb(lv_event_t * e) {
 }
 
 // ============================================================================
-//  CREAZIONE PAGINE
+//  IMPLEMENTAZIONE GRAFICA (ICONE)
+// ============================================================================
+
+void clear_icon(lv_obj_t *parent) { lv_obj_clean(parent); }
+
+lv_obj_t* draw_circle(lv_obj_t *parent, int w, int h, int x, int y, uint32_t color) {
+    lv_obj_t *c = lv_obj_create(parent);
+    lv_obj_set_size(c, w, h);
+    lv_obj_set_style_radius(c, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(c, lv_color_hex(color), 0);
+    lv_obj_set_style_border_width(c, 0, 0);
+    lv_obj_align(c, LV_ALIGN_CENTER, x, y);
+    return c;
+}
+
+void draw_icon_sun(lv_obj_t *parent) {
+    clear_icon(parent);
+    lv_obj_t *rays = lv_obj_create(parent);
+    lv_obj_set_size(rays, 55, 55);
+    lv_obj_set_style_radius(rays, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_opa(rays, 0, 0);
+    lv_obj_set_style_border_color(rays, lv_color_hex(0xF1C40F), 0);
+    lv_obj_set_style_border_width(rays, 2, 0);
+    lv_obj_center(rays);
+    draw_circle(parent, 35, 35, 0, 0, 0xF1C40F);
+}
+
+void draw_cloud_shape(lv_obj_t *parent, int x_offset, int y_offset, uint32_t color) {
+    draw_circle(parent, 25, 25, -12 + x_offset, 5 + y_offset, color); 
+    draw_circle(parent, 25, 25, 12 + x_offset, 5 + y_offset, color);  
+    draw_circle(parent, 35, 35, 0 + x_offset, -5 + y_offset, color);  
+}
+
+void draw_icon_cloud(lv_obj_t *parent) {
+    clear_icon(parent);
+    draw_cloud_shape(parent, 0, 0, 0xBDC3C7);
+}
+
+void draw_icon_partly_cloudy(lv_obj_t *parent) {
+    clear_icon(parent);
+    draw_circle(parent, 30, 30, 10, -10, 0xF1C40F);
+    draw_cloud_shape(parent, -5, 5, 0xFFFFFF);
+}
+
+void draw_icon_rain(lv_obj_t *parent) {
+    clear_icon(parent);
+    for(int i=0; i<3; i++) {
+        lv_obj_t *drop = lv_obj_create(parent);
+        lv_obj_set_size(drop, 4, 10);
+        lv_obj_set_style_bg_color(drop, lv_color_hex(0x3498DB), 0);
+        lv_obj_set_style_radius(drop, 2, 0);
+        lv_obj_set_style_border_width(drop, 0, 0);
+        lv_obj_align(drop, LV_ALIGN_CENTER, (i*12) - 12, 15);
+    }
+    draw_cloud_shape(parent, 0, -5, 0x7F8C8D); 
+}
+
+void draw_icon_thunder(lv_obj_t *parent) {
+    clear_icon(parent);
+    lv_obj_t *bolt = lv_obj_create(parent);
+    lv_obj_set_size(bolt, 8, 25);
+    lv_obj_set_style_bg_color(bolt, lv_color_hex(0xF1C40F), 0);
+    lv_obj_set_style_transform_rotation(bolt, 200, 0);
+    lv_obj_set_style_border_width(bolt, 0, 0);
+    lv_obj_align(bolt, LV_ALIGN_CENTER, 0, 15);
+    draw_cloud_shape(parent, 0, -5, 0x555555);
+}
+
+void draw_icon_snow(lv_obj_t *parent) {
+    clear_icon(parent);
+    for(int i=0; i<3; i++) {
+        draw_circle(parent, 6, 6, (i*12) - 12, 15, 0xFFFFFF);
+    }
+    draw_cloud_shape(parent, 0, -5, 0xBDC3C7);
+}
+
+void render_weather_icon(lv_obj_t *parent, String code) {
+    if (code == "01d" || code == "01n") draw_icon_sun(parent);
+    else if (code == "02d" || code == "02n") draw_icon_partly_cloudy(parent);
+    else if (code.startsWith("09") || code.startsWith("10")) draw_icon_rain(parent);
+    else if (code.startsWith("11")) draw_icon_thunder(parent);
+    else if (code.startsWith("13")) draw_icon_snow(parent);
+    else draw_icon_cloud(parent);
+}
+
+// ============================================================================
+//  BUILDERS PAGINE
 // ============================================================================
 
 void build_scr_caldaia() {
-    scr_caldaia = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(scr_caldaia, lv_color_hex(0x100505), 0); 
 
     lv_obj_t *tabview = lv_tabview_create(scr_caldaia);
@@ -417,7 +411,6 @@ void build_scr_caldaia() {
 }
 
 void build_scr_impegni() {
-    scr_impegni = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(scr_impegni, lv_color_hex(0x051005), 0); 
 
     lv_obj_t *title = lv_label_create(scr_impegni);
@@ -436,7 +429,6 @@ void build_scr_impegni() {
 }
 
 void build_scr_setup() {
-    scr_setup = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(scr_setup, lv_color_hex(0x1C1E26), 0);
 
     lv_obj_t *title = lv_label_create(scr_setup);
@@ -478,37 +470,7 @@ void build_scr_setup() {
     create_home_button(scr_setup);
 }
 
-void create_forecast_box(lv_obj_t *parent, int index) {
-    lv_obj_t *cont = lv_obj_create(parent);
-    lv_obj_set_size(cont, 110, 140); 
-    lv_obj_set_style_bg_color(cont, lv_color_hex(0x202020), 0);
-    lv_obj_set_style_bg_opa(cont, LV_OPA_80, 0); 
-    lv_obj_set_style_border_width(cont, 0, 0);
-    lv_obj_set_style_radius(cont, 10, 0);
-    
-    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(cont, 5, 0);
-    
-    forecast_days[index] = lv_label_create(cont);
-    lv_obj_set_style_text_font(forecast_days[index], &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(forecast_days[index], lv_color_hex(0xFFFFFF), 0);
-    lv_label_set_text(forecast_days[index], "--");
-
-    forecast_icon_containers[index] = lv_obj_create(cont);
-    lv_obj_set_size(forecast_icon_containers[index], 60, 50);
-    lv_obj_set_style_bg_opa(forecast_icon_containers[index], 0, 0);
-    lv_obj_set_style_border_width(forecast_icon_containers[index], 0, 0);
-    lv_obj_remove_flag(forecast_icon_containers[index], LV_OBJ_FLAG_SCROLLABLE);
-
-    forecast_temps[index] = lv_label_create(cont);
-    lv_obj_set_style_text_font(forecast_temps[index], &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(forecast_temps[index], lv_color_hex(0xFFFFFF), 0);
-    lv_label_set_text(forecast_temps[index], "--°");
-}
-
 void build_scr_main() {
-    scr_main = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(scr_main, lv_color_hex(0x050505), 0);
     lv_obj_set_style_bg_grad_color(scr_main, lv_color_hex(0x001030), 0);
     lv_obj_set_style_bg_grad_dir(scr_main, LV_GRAD_DIR_VER, 0);
