@@ -21,4 +21,9 @@
 #define TARGET_HEAT_ON      22.0  // Target impostato dal tasto "Brr che freddo"
 #define TARGET_HEAT_OFF     16.0  // Target impostato dal tasto "Che caldo"
 
+// --- LOGGING REMOTO ---
+#define SYSLOG_SERVER "192.168.1.140"  // <--- IP DEL TUO PC/SERVER SYSLOG
+#define SYSLOG_PORT 514
+#define DEVICE_NAME "Termostato_Smart"
+
 #endif
