@@ -24,20 +24,27 @@ lv_display_t *lvgl_lcd_init()
 {
     lv_display_t *display = lv_display_create(DISPLAY_WIDTH, DISPLAY_HEIGHT);
     log_v("display:0x%08x", display);
-    //  Create drawBuffer
-    lv_color_format_t cf = lv_display_get_color_format(display);
+    
+    // Calcolo dimensione buffer
     uint32_t px_size = sizeof(lv_color_t);
     uint32_t drawBufferSize = px_size * LVGL_BUFFER_PIXELS;
-    // ALLOCAZIONE BUFFER A
+
+    // --- MODIFICA DOUBLE BUFFERING ---
+    
+    // 1. Allocazione Primo Buffer
     void *drawBuffer1 = heap_caps_malloc(drawBufferSize, LVGL_BUFFER_MALLOC_FLAGS);
     if (!drawBuffer1) log_e("Fallita allocazione Buffer 1!");
 
-    // ALLOCAZIONE BUFFER B (Nuovo!)
+    // 2. Allocazione Secondo Buffer (NUOVO)
     void *drawBuffer2 = heap_caps_malloc(drawBufferSize, LVGL_BUFFER_MALLOC_FLAGS);
     if (!drawBuffer2) log_e("Fallita allocazione Buffer 2!");
 
-    // Attivazione Double Buffering (Direct Mode è spesso meglio per RGB Panel, ma Partial + 2 Buffer è il più sicuro con LVGL 9)
+    // 3. Configurazione LVGL con DUE buffer
+    // Passiamo drawBuffer1 E drawBuffer2. Il render mode rimane PARTIAL 
+    // (LVGL gestirà lo scambio automaticamente)
     lv_display_set_buffers(display, drawBuffer1, drawBuffer2, drawBufferSize, LV_DISPLAY_RENDER_MODE_PARTIAL);
+    
+    // ---------------------------------
 
     // Create direct_io panel handle
     const esp_lcd_rgb_panel_config_t rgb_panel_config = {
@@ -65,7 +72,6 @@ lv_display_t *lvgl_lcd_init()
         .vsync_gpio_num = ST7262_PANEL_CONFIG_VSYNC,
         .de_gpio_num = ST7262_PANEL_CONFIG_DE,
         .pclk_gpio_num = ST7262_PANEL_CONFIG_PCLK,
-        // LV_COLOR_16_SWAP is handled by mapping of the data
         .data_gpio_nums = {ST7262_PANEL_CONFIG_DATA_R0, ST7262_PANEL_CONFIG_DATA_R1, ST7262_PANEL_CONFIG_DATA_R2, ST7262_PANEL_CONFIG_DATA_R3, ST7262_PANEL_CONFIG_DATA_R4, ST7262_PANEL_CONFIG_DATA_G0, ST7262_PANEL_CONFIG_DATA_G1, ST7262_PANEL_CONFIG_DATA_G2, ST7262_PANEL_CONFIG_DATA_G3, ST7262_PANEL_CONFIG_DATA_G4, ST7262_PANEL_CONFIG_DATA_G5, ST7262_PANEL_CONFIG_DATA_B0, ST7262_PANEL_CONFIG_DATA_B1, ST7262_PANEL_CONFIG_DATA_B2, ST7262_PANEL_CONFIG_DATA_B3, ST7262_PANEL_CONFIG_DATA_B4},
         .disp_gpio_num = ST7262_PANEL_CONFIG_DISP,
         .on_frame_trans_done = direct_io_frame_trans_done,
