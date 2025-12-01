@@ -161,6 +161,8 @@ void render_weather_icon(lv_obj_t *parent, String code) {
 static void nav_event_cb(lv_event_t * e) {
     lv_obj_t * target_screen = (lv_obj_t *)lv_event_get_user_data(e);
     if(target_screen) {
+        // IMPORTANTE: Usa LV_SCR_LOAD_ANIM_NONE
+        // Le animazioni FADE su schermi 800x480 consumano troppa RAM e causano crash (schermo bianco)
         lv_scr_load_anim(target_screen, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
     }
 }
