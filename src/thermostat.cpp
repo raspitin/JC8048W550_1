@@ -3,34 +3,43 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include "secrets.h"
+#include <time.h>
 
 // Helper privato per inviare il comando
 void sendRelayCommand(bool turnOn) {
-    // 1. Controllo Locale (GPIO)
+    // 1. Controllo Locale (Invariato)
     #ifdef RELAY_PIN
         bool pinState = turnOn;
-        if (RELAY_ACTIVE_LOW) pinState = !pinState; // Inverte se active low
+        if (RELAY_ACTIVE_LOW) pinState = !pinState; 
         digitalWrite(RELAY_PIN, pinState);
     #endif
 
-    // 2. Controllo Remoto (HTTP su ESP-01S)
+    // 2. Controllo Remoto (Con Rolling Token)
     if (WiFi.status() == WL_CONNECTED) {
         HTTPClient http;
-        // Costruisce URL: http://192.168.1.32/on oppure /off
-        String url = String("http://") + REMOTE_RELAY_IP + (turnOn ? "/on" : "/off");
         
-        Serial.print("Relay Cmd: "); Serial.println(url);
+        // Calcolo del Token basato sul tempo
+        time_t now;
+        time(&now);
+        struct tm *timeinfo = localtime(&now);
         
-        // Timeout breve per non bloccare l'interfaccia se lo slave è spento
+        // Prendo i minuti (0-59) come indice
+        int currentMinute = timeinfo->tm_min;
+        const char* token = SECRET_TOKENS[currentMinute];
+        
+        // Costruisco URL: .../on?auth=ParolaDelMinuto
+        String command = turnOn ? "on" : "off";
+        String url = String("http://") + REMOTE_RELAY_IP + "/" + command + "?auth=" + token;
+        
+        Serial.printf("Relay Cmd: %s (Token: %s)\n", command.c_str(), token);
+        
         http.setTimeout(500); 
         
         if (http.begin(url)) {
             int httpCode = http.GET();
-            if (httpCode > 0) {
-                Serial.printf("Slave risponde: %d\n", httpCode);
-            } else {
-                Serial.printf("Errore Slave: %s\n", http.errorToString(httpCode).c_str());
-            }
+            if (httpCode == 200) Serial.println("Slave: OK");
+            else Serial.printf("Slave Err: %d\n", httpCode);
             http.end();
         }
     }

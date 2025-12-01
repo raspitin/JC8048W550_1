@@ -3,12 +3,13 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <esp_task_wdt.h> // Watchdog
-
 #include "ui.h"
 #include "network_manager.h"
 #include "config_manager.h"
 #include "web_interface.h"
 #include "thermostat.h"
+#include <time.h>      
+#include "secrets.h"
 
 // Configurazione Watchdog: 10 secondi di timeout
 #define WDT_TIMEOUT 10

@@ -12,6 +12,10 @@
 // Assicurati di aver assegnato un IP statico allo slave o di usare mDNS.
 #define REMOTE_RELAY_IP     "192.168.1.33" 
 
+// --- SICUREZZA ---
+// Questa stringa deve essere IDENTICA nel codice del Display e del Relè
+#define RELAY_AUTH_TOKEN    "z9Yp4KxR2Qm8sT6FgH7JnL3"
+
 // --- PARAMETRI TERMOSTATO ---
 #define TEMP_HYSTERESIS     0.5
 #define TARGET_HEAT_ON      22.0  // Target impostato dal tasto "Brr che freddo"

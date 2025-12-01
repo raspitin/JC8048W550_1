@@ -1,6 +1,7 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <WiFiManager.h> 
+#include "secrets.h"
 
 // GPIO0 è il pin del relè su ESP-01S Relay v1.0
 #define RELAY_PIN 0 
