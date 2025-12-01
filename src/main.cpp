@@ -119,7 +119,7 @@ void setup() {
 
     isOnline = setup_network();
     
-    if (isOnline) {
+    if (isOnline ) {
         configTime(0, 0, "it.pool.ntp.org", "time.nist.gov", "pool.ntp.org");
         setenv("TZ", configManager.data.timezone, 1);
         tzset();

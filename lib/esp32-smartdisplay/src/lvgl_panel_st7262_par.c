@@ -26,10 +26,18 @@ lv_display_t *lvgl_lcd_init()
     log_v("display:0x%08x", display);
     //  Create drawBuffer
     lv_color_format_t cf = lv_display_get_color_format(display);
-    uint32_t px_size = lv_color_format_get_size(cf);
+    uint32_t px_size = sizeof(lv_color_t);
     uint32_t drawBufferSize = px_size * LVGL_BUFFER_PIXELS;
-    void *drawBuffer = heap_caps_malloc(drawBufferSize, LVGL_BUFFER_MALLOC_FLAGS);
-    lv_display_set_buffers(display, drawBuffer, NULL, drawBufferSize, LV_DISPLAY_RENDER_MODE_PARTIAL);
+    // ALLOCAZIONE BUFFER A
+    void *drawBuffer1 = heap_caps_malloc(drawBufferSize, LVGL_BUFFER_MALLOC_FLAGS);
+    if (!drawBuffer1) log_e("Fallita allocazione Buffer 1!");
+
+    // ALLOCAZIONE BUFFER B (Nuovo!)
+    void *drawBuffer2 = heap_caps_malloc(drawBufferSize, LVGL_BUFFER_MALLOC_FLAGS);
+    if (!drawBuffer2) log_e("Fallita allocazione Buffer 2!");
+
+    // Attivazione Double Buffering (Direct Mode è spesso meglio per RGB Panel, ma Partial + 2 Buffer è il più sicuro con LVGL 9)
+    lv_display_set_buffers(display, drawBuffer1, drawBuffer2, drawBufferSize, LV_DISPLAY_RENDER_MODE_PARTIAL);
 
     // Create direct_io panel handle
     const esp_lcd_rgb_panel_config_t rgb_panel_config = {
