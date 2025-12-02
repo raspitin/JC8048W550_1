@@ -14,22 +14,20 @@ bool ConfigManager::begin() {
 }
 
 void ConfigManager::resetToDefault() {
-    // Default: Weather
     strlcpy(data.weatherKey, "3737538a12e713a7bd87f314c9086bc2", sizeof(data.weatherKey));
     strlcpy(data.weatherCity, "Rome", sizeof(data.weatherCity));
     strlcpy(data.weatherCountry, "IT", sizeof(data.weatherCountry));
     strlcpy(data.timezone, "CET-1CEST,M3.5.0,M10.5.0/3", sizeof(data.timezone));
 
-    // Default: Programma standard per tutti i giorni
-    // 06:00 -> 21.0°C
-    // 08:30 -> 18.0°C
-    // 17:30 -> 21.5°C
-    // 22:30 -> 17.0°C
+    // Default: Acceso dalle 06:00 (slot 12) alle 08:30 (slot 17) 
+    // e dalle 17:30 (slot 35) alle 22:30 (slot 45)
+    // 06:00 è 6*2 = 12. 08:30 è 8*2+1 = 17.
+    uint64_t defaultSchedule = 0;
+    for(int i=12; i<17; i++) defaultSchedule |= (1ULL << i);
+    for(int i=35; i<45; i++) defaultSchedule |= (1ULL << i);
+
     for(int i=0; i<7; i++) {
-        data.weekSchedule[i].slots[0] = {6,  0,  21.0};
-        data.weekSchedule[i].slots[1] = {8,  30, 18.0};
-        data.weekSchedule[i].slots[2] = {17, 30, 21.5};
-        data.weekSchedule[i].slots[3] = {22, 30, 17.0};
+        data.weekSchedule[i].timeSlots = defaultSchedule;
     }
     saveConfig();
 }
@@ -42,7 +40,6 @@ bool ConfigManager::loadConfig() {
     }
 
     File file = LittleFS.open(filename, "r");
-    // Aumentiamo buffer per contenere il programma settimanale
     DynamicJsonDocument doc(4096); 
     DeserializationError error = deserializeJson(doc, file);
 
@@ -57,22 +54,16 @@ bool ConfigManager::loadConfig() {
     strlcpy(data.weatherCountry, doc["w_country"] | "IT", sizeof(data.weatherCountry));
     strlcpy(data.timezone, doc["tz"] | "CET-1CEST,M3.5.0,M10.5.0/3", sizeof(data.timezone));
 
-    // Carica Programma
     JsonArray week = doc["schedule"];
     if(!week.isNull()) {
         for(int d=0; d<7; d++) {
-            JsonArray daySlots = week[d];
-            if(!daySlots.isNull()) {
-                for(int s=0; s<4; s++) {
-                    data.weekSchedule[d].slots[s].hour   = daySlots[s]["h"] | 0;
-                    data.weekSchedule[d].slots[s].minute = daySlots[s]["m"] | 0;
-                    data.weekSchedule[d].slots[s].temp   = daySlots[s]["t"] | 18.0;
-                }
-            }
+            // Carichiamo High e Low part per ricostruire uint64
+            uint32_t h = week[d]["h"] | 0;
+            uint32_t l = week[d]["l"] | 0;
+            data.weekSchedule[d].timeSlots = ((uint64_t)h << 32) | l;
         }
     } else {
-        // Se manca la schedule nel JSON vecchio, resetta solo quella
-        resetToDefault(); // O gestisci più finemente
+        resetToDefault(); 
     }
 
     file.close();
@@ -87,16 +78,12 @@ bool ConfigManager::saveConfig() {
     doc["w_country"] = data.weatherCountry;
     doc["tz"] = data.timezone;
 
-    // Salva Programma (Array di Array)
     JsonArray week = doc.createNestedArray("schedule");
     for(int d=0; d<7; d++) {
-        JsonArray daySlots = week.createNestedArray();
-        for(int s=0; s<4; s++) {
-            JsonObject slot = daySlots.createNestedObject();
-            slot["h"] = data.weekSchedule[d].slots[s].hour;
-            slot["m"] = data.weekSchedule[d].slots[s].minute;
-            slot["t"] = data.weekSchedule[d].slots[s].temp;
-        }
+        JsonObject dayObj = week.createNestedObject();
+        // Salviamo come due interi a 32 bit per evitare problemi con JS/JSON
+        dayObj["h"] = (uint32_t)(data.weekSchedule[d].timeSlots >> 32);
+        dayObj["l"] = (uint32_t)(data.weekSchedule[d].timeSlots & 0xFFFFFFFF);
     }
 
     File file = LittleFS.open(filename, "w");

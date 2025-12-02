@@ -3,16 +3,10 @@
 
 #include <Arduino.h>
 
-// Struttura per una singola fascia oraria
-struct ScheduleSlot {
-    uint8_t hour;
-    uint8_t minute;
-    float temp;
-};
-
-// Struttura per un giorno intero (4 fasce)
+// Struttura semplificata: 48 bit per 48 fasce da 30 minuti (00:00 - 24:00)
+// 1 = ACCESO, 0 = SPENTO
 struct DailySchedule {
-    ScheduleSlot slots[4];
+    uint64_t timeSlots = 0; 
 };
 
 struct AppConfig {
