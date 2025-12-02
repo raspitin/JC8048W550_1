@@ -24,11 +24,6 @@ lv_obj_t *lbl_cur_temp_big;
 lv_obj_t *lbl_cur_desc;
 lv_obj_t *cont_cur_icon;    
 
-// Array previsioni
-lv_obj_t *forecast_days[5];
-lv_obj_t *forecast_temps[5];
-lv_obj_t *forecast_icon_containers[5];
-
 // Widget Setup
 lv_obj_t *lbl_setup_ssid;
 lv_obj_t *lbl_setup_ip;
@@ -65,7 +60,6 @@ void draw_icon_snow(lv_obj_t *parent);
 void draw_icon_thunder(lv_obj_t *parent);
 void render_weather_icon(lv_obj_t *parent, String code); 
 
-void create_forecast_box(lv_obj_t *parent, int index);
 void create_home_button(lv_obj_t *parent);
 
 // ============================================================================
@@ -161,8 +155,6 @@ void render_weather_icon(lv_obj_t *parent, String code) {
 static void nav_event_cb(lv_event_t * e) {
     lv_obj_t * target_screen = (lv_obj_t *)lv_event_get_user_data(e);
     if(target_screen) {
-        // IMPORTANTE: Usa LV_SCR_LOAD_ANIM_NONE
-        // Le animazioni FADE su schermi 800x480 consumano troppa RAM e causano crash (schermo bianco)
         lv_scr_load_anim(target_screen, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
     }
 }
@@ -352,39 +344,6 @@ static void slot_click_cb(lv_event_t * e) {
 }
 
 // ============================================================================
-//  FUNZIONE MANCANTE: CREATE FORECAST BOX (Implementazione)
-// ============================================================================
-
-void create_forecast_box(lv_obj_t *parent, int index) {
-    lv_obj_t *cont = lv_obj_create(parent);
-    lv_obj_set_size(cont, 110, 140); 
-    lv_obj_set_style_bg_color(cont, lv_color_hex(0x202020), 0);
-    lv_obj_set_style_bg_opa(cont, LV_OPA_80, 0); 
-    lv_obj_set_style_border_width(cont, 0, 0);
-    lv_obj_set_style_radius(cont, 10, 0);
-    
-    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(cont, 5, 0);
-    
-    forecast_days[index] = lv_label_create(cont);
-    lv_obj_set_style_text_font(forecast_days[index], &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(forecast_days[index], lv_color_hex(0xFFFFFF), 0);
-    lv_label_set_text(forecast_days[index], "--");
-
-    forecast_icon_containers[index] = lv_obj_create(cont);
-    lv_obj_set_size(forecast_icon_containers[index], 60, 50);
-    lv_obj_set_style_bg_opa(forecast_icon_containers[index], 0, 0);
-    lv_obj_set_style_border_width(forecast_icon_containers[index], 0, 0);
-    lv_obj_remove_flag(forecast_icon_containers[index], LV_OBJ_FLAG_SCROLLABLE);
-
-    forecast_temps[index] = lv_label_create(cont);
-    lv_obj_set_style_text_font(forecast_temps[index], &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(forecast_temps[index], lv_color_hex(0xFFFFFF), 0);
-    lv_label_set_text(forecast_temps[index], "--°");
-}
-
-// ============================================================================
 //  BUILDERS PAGINE
 // ============================================================================
 
@@ -548,18 +507,6 @@ void build_scr_main() {
     lv_obj_align(lbl_date, LV_ALIGN_TOP_LEFT, 20, 70);
     lv_label_set_text(lbl_date, "---");
 
-    // BOTTONE MANUALE
-    btn_manual_toggle = lv_button_create(col_left);
-    lv_obj_set_size(btn_manual_toggle, 220, 60);
-    lv_obj_align(btn_manual_toggle, LV_ALIGN_TOP_RIGHT, -20, 50); 
-    lv_obj_add_event_cb(btn_manual_toggle, manual_toggle_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_set_style_bg_color(btn_manual_toggle, lv_color_hex(0x3498DB), 0); 
-    
-    lbl_manual_toggle = lv_label_create(btn_manual_toggle);
-    lv_obj_set_style_text_font(lbl_manual_toggle, &lv_font_montserrat_20, 0);
-    lv_label_set_text(lbl_manual_toggle, "Brr che freddo!!!");
-    lv_obj_center(lbl_manual_toggle);
-
     lv_obj_t *cont_current = lv_obj_create(col_left);
     lv_obj_set_size(cont_current, 600, 150);
     lv_obj_set_style_bg_opa(cont_current, 0, 0);
@@ -587,18 +534,24 @@ void build_scr_main() {
     lv_label_set_long_mode(lbl_cur_desc, LV_LABEL_LONG_SCROLL_CIRCULAR);
     lv_label_set_text(lbl_cur_desc, "---");
 
+    // Area Basso Sinistra (Sostituisce Previsioni)
     lv_obj_t *bot_section = lv_obj_create(col_left);
-    lv_obj_set_size(bot_section, 630, 180); 
+    lv_obj_set_size(bot_section, 630, 150); 
     lv_obj_set_style_bg_opa(bot_section, 0, 0);
     lv_obj_set_style_border_width(bot_section, 0, 0);
     lv_obj_align(bot_section, LV_ALIGN_BOTTOM_LEFT, 10, -10);
-    lv_obj_set_layout(bot_section, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(bot_section, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(bot_section, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-    for(int i=0; i<5; i++) {
-        create_forecast_box(bot_section, i);
-    }
+    
+    // POSIZIONO IL BOTTONE QUI
+    btn_manual_toggle = lv_button_create(bot_section);
+    lv_obj_set_size(btn_manual_toggle, 300, 80); // Un po' più grande per riempire lo spazio
+    lv_obj_center(btn_manual_toggle);
+    lv_obj_add_event_cb(btn_manual_toggle, manual_toggle_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_set_style_bg_color(btn_manual_toggle, lv_color_hex(0x3498DB), 0); 
+    
+    lbl_manual_toggle = lv_label_create(btn_manual_toggle);
+    lv_obj_set_style_text_font(lbl_manual_toggle, &lv_font_montserrat_24, 0); // Font più grande
+    lv_label_set_text(lbl_manual_toggle, "Brr che freddo!!!");
+    lv_obj_center(lbl_manual_toggle);
 
     // --- COLONNA DESTRA ---
     lv_obj_t *col_right = lv_obj_create(scr_main);
@@ -660,11 +613,9 @@ void update_current_weather(String temp, String desc, String iconCode) {
     if(cont_cur_icon) render_weather_icon(cont_cur_icon, iconCode);
 }
 
+// Funzione mantenuta ma vuota per compatibilità con main.cpp
 void update_forecast_item(int index, String day, String temp, String iconCode) {
-    if(index < 0 || index >= 5) return;
-    lv_label_set_text(forecast_days[index], day.c_str());
-    lv_label_set_text_fmt(forecast_temps[index], "%s°", temp.c_str());
-    render_weather_icon(forecast_icon_containers[index], iconCode);
+    // Non fa nulla, le previsioni sono state rimosse dalla UI
 }
 
 void update_ui() {
