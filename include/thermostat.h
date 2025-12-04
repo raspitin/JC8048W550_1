@@ -14,18 +14,18 @@ public:
     bool isHeatingState();
     float readLocalSensor();
     
-    // --- BOOST (Ora restituiscono bool per indicare successo connessione) ---
+    // Boost (ritorna bool per successo connessione)
     bool startBoost(int minutes);
     bool stopBoost();
     bool isBoostActive();
     long getBoostRemainingSeconds();
 
-    // --- CONTROLLO DIRETTO ---
+    // Controllo manuale (ritorna bool per successo connessione)
     bool startHeating();
     bool stopHeating();
 
-    // --- HEARTBEAT ---
-    void checkHeartbeat(); // Da chiamare nel loop principale
+    // Heartbeat
+    void checkHeartbeat();
 
 private:
     float currentTemp = 0.0;
@@ -35,7 +35,6 @@ private:
     bool _boostActive = false;
     time_t _boostEndTime = 0;
 
-    // Variabili Heartbeat
     unsigned long _lastHeartbeatTime = 0;
     bool _relayOnline = true; 
 

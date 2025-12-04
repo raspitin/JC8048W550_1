@@ -7,13 +7,11 @@
 #include "config_manager.h"
 #include <time.h>
 
-// Heartbeat ogni 20 minuti (in millisecondi)
 #define HEARTBEAT_INTERVAL (20 * 60 * 1000)
 
 bool Thermostat::sendRelayCommand(bool turnOn) {
     bool success = false;
 
-    // 1. Relè Locale (Sempre OK se definito)
     #ifdef RELAY_PIN
         bool pinState = turnOn;
         if (RELAY_ACTIVE_LOW) pinState = !pinState; 
@@ -21,11 +19,9 @@ bool Thermostat::sendRelayCommand(bool turnOn) {
         success = true; 
     #endif
 
-    // 2. Relè Remoto (WiFi)
     if (WiFi.status() == WL_CONNECTED) {
         HTTPClient http;
-        time_t now;
-        time(&now);
+        time_t now; time(&now);
         struct tm *timeinfo = localtime(&now);
         int currentMinute = timeinfo->tm_min;
         const char* token = SECRET_TOKENS[currentMinute];
@@ -33,7 +29,6 @@ bool Thermostat::sendRelayCommand(bool turnOn) {
         String command = turnOn ? "on" : "off";
         String url = String("http://") + REMOTE_RELAY_IP + "/" + command + "?auth=" + token;
         
-        // Timeout breve (2s) per non bloccare l'interfaccia in caso di errore
         http.setTimeout(2000); 
         
         if (http.begin(url)) {
@@ -51,31 +46,24 @@ bool Thermostat::sendRelayCommand(bool turnOn) {
             _relayOnline = false;
         }
     } 
-    
     return success;
 }
 
 bool Thermostat::pingRelay() {
     if (WiFi.status() != WL_CONNECTED) return false;
-    
     HTTPClient http;
     String url = String("http://") + REMOTE_RELAY_IP + "/status";
     http.setTimeout(2000);
     
     bool alive = false;
     if (http.begin(url)) {
-        int code = http.GET();
-        if (code == 200) alive = true;
+        if (http.GET() == 200) alive = true;
         http.end();
     }
     
-    if(alive) {
-        Serial.println("Heartbeat: OK");
-        _relayOnline = true;
-    } else {
-        Serial.println("Heartbeat: PERSO");
-        _relayOnline = false;
-    }
+    _relayOnline = alive;
+    if(alive) Serial.println("Heartbeat: OK");
+    else Serial.println("Heartbeat: PERSO");
     return alive;
 }
 
@@ -102,7 +90,7 @@ bool Thermostat::startHeating() {
         Serial.println(">>> CALDAIA ON <<<");
         return sendRelayCommand(true);
     }
-    return true; // Era già accesa
+    return true;
 }
 
 bool Thermostat::stopHeating() {
@@ -111,16 +99,13 @@ bool Thermostat::stopHeating() {
         Serial.println(">>> CALDAIA OFF <<<");
         return sendRelayCommand(false);
     }
-    return true; // Era già spenta
+    return true;
 }
 
-// --- BOOST ---
 bool Thermostat::startBoost(int minutes) {
-    time_t now;
-    time(&now);
+    time_t now; time(&now);
     _boostEndTime = now + (minutes * 60);
     _boostActive = true;
-    
     targetTemp = TARGET_HEAT_ON; 
     return startHeating();
 }
@@ -128,18 +113,13 @@ bool Thermostat::startBoost(int minutes) {
 bool Thermostat::stopBoost() {
     _boostActive = false;
     _boostEndTime = 0;
-    
-    // Ricalcola stato (potrebbe dover restare accesa per programma)
     update(currentTemp);
-    
-    // Ritorniamo true se il relè risponde (in base all'ultimo comando o heartbeat)
     return _relayOnline;
 }
 
 bool Thermostat::isBoostActive() {
     if (!_boostActive) return false;
-    time_t now;
-    time(&now);
+    time_t now; time(&now);
     if (now >= _boostEndTime) {
         _boostActive = false;
         return false;
@@ -149,14 +129,12 @@ bool Thermostat::isBoostActive() {
 
 long Thermostat::getBoostRemainingSeconds() {
     if (!isBoostActive()) return 0;
-    time_t now;
-    time(&now);
+    time_t now; time(&now);
     return (_boostEndTime - now);
 }
 
 void Thermostat::update(float currentTemp) {
     this->currentTemp = currentTemp;
-    
     time_t now; time(&now);
     struct tm *timeinfo = localtime(&now);
 
@@ -165,11 +143,9 @@ void Thermostat::update(float currentTemp) {
     bool scheduleActive = (configManager.data.weekSchedule[day].timeSlots >> slotIndex) & 1ULL;
     bool boostActive = isBoostActive();
 
-    bool shouldHeat = scheduleActive || boostActive;
-
-    if (shouldHeat) {
+    if (scheduleActive || boostActive) {
         targetTemp = TARGET_HEAT_ON;
-        if (!isHeating) startHeating(); // Qui è automatico, ignoriamo errore per ora
+        if (!isHeating) startHeating();
     } else {
         targetTemp = TARGET_HEAT_OFF;
         if (isHeating) stopHeating();

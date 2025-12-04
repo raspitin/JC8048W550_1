@@ -9,13 +9,11 @@
 #include "thermostat.h"
 extern Thermostat thermo;
 
-// --- SCHERMATE ---
 lv_obj_t *scr_main;
 lv_obj_t *scr_program; 
 lv_obj_t *scr_setup;
 lv_obj_t *scr_impegni;
 
-// --- WIDGET HOME GLOBALI ---
 lv_obj_t *ui_lbl_hour = NULL;
 lv_obj_t *ui_lbl_min = NULL;
 lv_obj_t *ui_lbl_dots = NULL;
@@ -24,12 +22,10 @@ lv_obj_t *lbl_cur_temp_big;
 lv_obj_t *lbl_cur_desc;
 lv_obj_t *cont_cur_icon;    
 
-// Widget Setup
 lv_obj_t *lbl_setup_ssid;
 lv_obj_t *lbl_setup_ip;
 lv_obj_t *lbl_setup_gw;
 
-// --- WIDGET HOME (BOOST) ---
 lv_obj_t *lbl_today_schedule; 
 lv_obj_t *btn_boost;          
 lv_obj_t *lbl_boost_status;   
@@ -37,7 +33,6 @@ lv_obj_t *lbl_boost_status;
 static int boost_minutes_selection = 30;
 static lv_obj_t *lbl_popup_minutes;
 
-// --- WIDGET PROGRAMMAZIONE ---
 lv_obj_t *tv_days;      
 lv_obj_t *timelines[7]; 
 lv_obj_t *lbl_intervals[7]; 
@@ -49,9 +44,6 @@ static int source_day_for_copy = 0;
 static int prev_drag_slot_idx = -1;   
 static int anchor_drag_slot_idx = -1; 
 
-// ============================================================================
-//  PROTOTIPI INTERNI
-// ============================================================================
 void create_home_button(lv_obj_t *parent);
 void create_copy_popup(int sourceDayIndex);
 void refresh_intervals_display(int ui_idx); 
@@ -59,12 +51,9 @@ void render_weather_icon(lv_obj_t *parent, String code);
 void update_today_schedule_label();
 void create_boost_popup();
 void get_time_string_from_slot(int slot, char* buf);
-// show_relay_error_popup è già dichiarato in ui.h
+void show_relay_error_popup();
 
-// ============================================================================
-//  POPUP ERRORE COMUNICAZIONE
-// ============================================================================
-
+// POPUP ERRORE
 static void error_popup_close_cb(lv_event_t * e) {
     lv_obj_t * win = (lv_obj_t *)lv_event_get_user_data(e);
     lv_obj_delete(win);
@@ -74,7 +63,7 @@ void show_relay_error_popup() {
     lv_obj_t * win = lv_obj_create(lv_scr_act());
     lv_obj_set_size(win, 450, 280);
     lv_obj_center(win);
-    lv_obj_set_style_bg_color(win, lv_color_hex(0x440000), 0); // Rosso scuro
+    lv_obj_set_style_bg_color(win, lv_color_hex(0x440000), 0);
     lv_obj_set_style_border_color(win, lv_color_hex(0xFF0000), 0);
     lv_obj_set_style_border_width(win, 3, 0);
     lv_obj_set_flex_flow(win, LV_FLEX_FLOW_COLUMN);
@@ -101,10 +90,7 @@ void show_relay_error_popup() {
     lv_obj_center(l_btn);
 }
 
-// ============================================================================
-//  LOGICA BOOST (POPUP e AZIONI)
-// ============================================================================
-
+// BOOST LOGIC
 static void boost_plus_cb(lv_event_t * e) {
     boost_minutes_selection += 30;
     if(boost_minutes_selection > 480) boost_minutes_selection = 480;
@@ -119,16 +105,10 @@ static void boost_minus_cb(lv_event_t * e) {
 
 static void boost_start_cb(lv_event_t * e) {
     lv_obj_t * win = (lv_obj_t *)lv_event_get_user_data(e);
-    
-    // Tenta avvio e controlla risultato
     bool ok = thermo.startBoost(boost_minutes_selection);
-    
     lv_obj_delete(win);
     update_ui(); 
-    
-    if (!ok) {
-        show_relay_error_popup();
-    }
+    if (!ok) show_relay_error_popup();
 }
 
 static void boost_cancel_cb(lv_event_t * e) {
@@ -138,7 +118,6 @@ static void boost_cancel_cb(lv_event_t * e) {
 
 void create_boost_popup() {
     boost_minutes_selection = 30; 
-
     lv_obj_t * win = lv_obj_create(lv_scr_act());
     lv_obj_set_size(win, 400, 320);
     lv_obj_center(win);
@@ -202,10 +181,6 @@ static void btn_boost_click_cb(lv_event_t * e) {
     }
 }
 
-// ============================================================================
-//  HELPER ORARI E AGGIORNAMENTO HOME
-// ============================================================================
-
 void get_time_string_from_slot(int slot, char* buf) {
     if(slot > 48) slot = 48;
     int h = slot / 2;
@@ -215,10 +190,7 @@ void get_time_string_from_slot(int slot, char* buf) {
 
 void update_today_schedule_label() {
     if(!lbl_today_schedule) return;
-    
-    time_t now;
-    time(&now);
-    struct tm *timeinfo = localtime(&now);
+    time_t now; time(&now); struct tm *timeinfo = localtime(&now);
     int day_idx = timeinfo->tm_wday; 
     
     const char* months[] = {"Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"};
@@ -236,28 +208,18 @@ void update_today_schedule_label() {
                 int start = i;
                 while(i < 48 && ((slots >> i) & 1ULL)) i++;
                 int end = i;
-                
                 char bufS[6], bufE[6];
                 get_time_string_from_slot(start, bufS);
                 get_time_string_from_slot(end, bufE);
-                
                 text += "- " + String(bufS) + " - " + String(bufE) + "\n";
                 count++;
-            } else {
-                i++;
-            }
+            } else i++;
         }
         if(i < 48 && count >= 4) text += "...";
     }
-    
-    if(String(lv_label_get_text(lbl_today_schedule)) != text) {
-        lv_label_set_text(lbl_today_schedule, text.c_str());
-    }
+    if(String(lv_label_get_text(lbl_today_schedule)) != text) lv_label_set_text(lbl_today_schedule, text.c_str());
 }
 
-// ============================================================================
-//  FUNZIONI GRAFICHE
-// ============================================================================
 void clear_icon(lv_obj_t *parent) { lv_obj_clean(parent); }
 lv_obj_t* draw_circle(lv_obj_t *parent, int w, int h, int x, int y, uint32_t color) {
     lv_obj_t *c = lv_obj_create(parent); lv_obj_set_size(c, w, h); lv_obj_set_style_radius(c, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(c, lv_color_hex(color), 0); lv_obj_set_style_border_width(c, 0, 0); lv_obj_align(c, LV_ALIGN_CENTER, x, y); return c;
@@ -280,10 +242,6 @@ void render_weather_icon(lv_obj_t *parent, String code) {
     else if (code.startsWith("13")) draw_icon_snow(parent);
     else draw_icon_cloud(parent);
 }
-
-// ============================================================================
-//  NAVIGAZIONE
-// ============================================================================
 
 static void nav_event_cb(lv_event_t * e) {
     lv_obj_t * target_screen = (lv_obj_t *)lv_event_get_user_data(e);
@@ -326,10 +284,6 @@ void create_home_button(lv_obj_t *parent) {
     lv_obj_add_event_cb(btn, nav_event_cb, LV_EVENT_CLICKED, scr_main);
 }
 
-
-// ============================================================================
-//  TIMELINE
-// ============================================================================
 void refresh_intervals_display(int ui_idx) {
     if(ui_idx < 0 || ui_idx >= 7) return;
     if(!lbl_intervals[ui_idx]) return;
@@ -371,12 +325,10 @@ static void timeline_draw_event_cb(lv_event_t * e) {
     uint64_t slots = configManager.data.weekSchedule[day_idx].timeSlots;
     float slot_w = (float)w_draw / 48.0;
     int available_h = h - 25; int bar_h = available_h * 0.4; int bar_y_offset = (available_h - bar_h) / 2 + 5; 
-
     lv_draw_rect_dsc_t dsc_bg; lv_draw_rect_dsc_init(&dsc_bg);
     dsc_bg.bg_color = lv_color_hex(0x333333); dsc_bg.bg_opa = LV_OPA_COVER; dsc_bg.radius = 4; 
     lv_area_t bg_area; bg_area.x1 = x_start_draw; bg_area.x2 = x_start_draw + w_draw - 1; bg_area.y1 = y_start + bar_y_offset; bg_area.y2 = bg_area.y1 + bar_h;
     lv_draw_rect(layer, &dsc_bg, &bg_area);
-
     lv_draw_rect_dsc_t dsc_on; lv_draw_rect_dsc_init(&dsc_on);
     dsc_on.bg_color = lv_color_hex(0x27AE60); dsc_on.bg_opa = LV_OPA_COVER; dsc_on.radius = 4;
     int i = 0;
@@ -391,7 +343,6 @@ static void timeline_draw_event_cb(lv_event_t * e) {
             lv_draw_rect(layer, &dsc_on, &on_area);
         } else i++;
     }
-
     lv_draw_label_dsc_t label_dsc; lv_draw_label_dsc_init(&label_dsc);
     label_dsc.color = lv_color_hex(0xFFFFFF); label_dsc.font = &lv_font_montserrat_14; label_dsc.align = LV_TEXT_ALIGN_CENTER;
     for(int h_idx=0; h_idx<=24; h_idx+=4) {
@@ -410,14 +361,10 @@ static void timeline_input_event_cb(lv_event_t * e) {
     lv_obj_t * obj = (lv_obj_t*)lv_event_get_target(e);
     int ui_idx = (int)(intptr_t)lv_event_get_user_data(e);
     int config_idx = (ui_idx + 1) % 7;
-    
     if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
         prev_drag_slot_idx = -1; anchor_drag_slot_idx = -1;
         lv_label_set_text(lbl_drag_info[ui_idx], "Trascina per selezionare orari");
-        refresh_intervals_display(ui_idx); 
-        configManager.saveConfig();
-        update_today_schedule_label();
-        return;
+        refresh_intervals_display(ui_idx); configManager.saveConfig(); update_today_schedule_label(); return;
     }
     if (code == LV_EVENT_PRESSED) { prev_drag_slot_idx = -1; anchor_drag_slot_idx = -1; }
     if (code == LV_EVENT_PRESSED || code == LV_EVENT_PRESSING) {
@@ -431,12 +378,10 @@ static void timeline_input_event_cb(lv_event_t * e) {
         int current_slot_idx = (rel_x * 48) / w_draw;
         if(current_slot_idx < 0) current_slot_idx = 0; if(current_slot_idx > 47) current_slot_idx = 47;
         if(anchor_drag_slot_idx == -1) anchor_drag_slot_idx = current_slot_idx;
-        
         int drag_start = (anchor_drag_slot_idx < current_slot_idx) ? anchor_drag_slot_idx : current_slot_idx;
         int drag_end = (anchor_drag_slot_idx < current_slot_idx) ? current_slot_idx : anchor_drag_slot_idx;
         char bufS[6], bufE[6]; get_time_string_from_slot(drag_start, bufS); get_time_string_from_slot(drag_end + 1, bufE);
         lv_label_set_text_fmt(lbl_drag_info[ui_idx], "Selezionando: %s - %s", bufS, bufE);
-
         int start_fill = current_slot_idx; int end_fill = current_slot_idx;
         if (code == LV_EVENT_PRESSING && prev_drag_slot_idx != -1) {
             if (current_slot_idx > prev_drag_slot_idx) { start_fill = prev_drag_slot_idx; end_fill = current_slot_idx; } else { start_fill = current_slot_idx; end_fill = prev_drag_slot_idx; }
@@ -447,8 +392,7 @@ static void timeline_input_event_cb(lv_event_t * e) {
         float slot_w = (float)w_draw / 48.0; int x_base = coords.x1 + TIMELINE_PAD_X;
         for(int i = start_fill; i <= end_fill; i++) {
             if ( !((*slots >> i) & 1ULL) ) {
-                *slots |= (1ULL << i);
-                changed = true;
+                *slots |= (1ULL << i); changed = true;
                 int sx1 = x_base + (int)(i * slot_w); int sx2 = x_base + (int)((i + 1) * slot_w);
                 if(sx1 < min_x_inv) min_x_inv = sx1; if(sx2 > max_x_inv) max_x_inv = sx2;
             }
@@ -460,14 +404,15 @@ static void timeline_input_event_cb(lv_event_t * e) {
         prev_drag_slot_idx = current_slot_idx;
     }
 }
+
 static void clear_prog_cb(lv_event_t * e) {
     int ui_idx = (int)(intptr_t)lv_event_get_user_data(e);
     int config_idx = (ui_idx + 1) % 7;
     configManager.data.weekSchedule[config_idx].timeSlots = 0;
     if(timelines[ui_idx]) lv_obj_invalidate(timelines[ui_idx]);
-    refresh_intervals_display(ui_idx);
-    configManager.saveConfig();
+    refresh_intervals_display(ui_idx); configManager.saveConfig();
 }
+
 static void copy_confirm_cb(lv_event_t * e) {
     lv_obj_t * win = (lv_obj_t *)lv_event_get_user_data(e);
     uint64_t pattern = configManager.data.weekSchedule[source_day_for_copy].timeSlots;
@@ -479,16 +424,14 @@ static void copy_confirm_cb(lv_event_t * e) {
             refresh_intervals_display(i);
         }
     }
-    configManager.saveConfig();
-    lv_obj_delete(win);
+    configManager.saveConfig(); lv_obj_delete(win);
 }
+
 static void copy_cancel_cb(lv_event_t * e) { lv_obj_t * win = (lv_obj_t *)lv_event_get_user_data(e); lv_obj_delete(win); }
+
 void create_copy_popup(int uiDayIndex) {
     int configDayIndex = (uiDayIndex + 1) % 7; source_day_for_copy = configDayIndex;
     lv_obj_t * win = lv_obj_create(lv_scr_act()); lv_obj_set_size(win, 500, 350); lv_obj_center(win);
-    lv_obj_set_style_bg_color(win, lv_color_hex(0x202020), 0); lv_obj_set_style_border_color(win, lv_color_hex(0xFFFFFF), 0); lv_obj_set_style_border_width(win, 2, 0);
-    lv_obj_set_flex_flow(win, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(win, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_bg_color(win, lv_color_hex(0x202020), 0); lv_obj_set_style_border_color(win, lv_color_hex(0xFFFFFF), 0); lv_obj_set_style_border_width(win, 2, 0);
     lv_obj_set_flex_flow(win, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(win, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -508,7 +451,6 @@ void create_copy_popup(int uiDayIndex) {
     lv_obj_t * l2 = lv_label_create(btn_no); lv_label_set_text(l2, "ANNULLA");
 }
 static void open_copy_popup_cb(lv_event_t * e) { int ui_idx = (int)(intptr_t)lv_event_get_user_data(e); create_copy_popup(ui_idx); }
-
 
 // ============================================================================
 //  BUILDERS PAGINE
@@ -572,10 +514,6 @@ void build_scr_program() {
     lv_obj_remove_flag(content, LV_OBJ_FLAG_SCROLLABLE);
     create_home_button(scr_program);
 }
-
-// ... (RESTO DEL FILE INVARIATO) ...
-// build_scr_impegni, build_scr_setup, build_scr_main, ui_init_all, etc.
-// PER SICUREZZA, INCOLLO ANCHE LE ALTRE FUNZIONI CHIAVE PER EVITARE ERRORI DI COPIA-INCOLLA
 
 void build_scr_impegni() {
     lv_obj_set_style_bg_color(scr_impegni, lv_color_hex(0x051005), 0); 
