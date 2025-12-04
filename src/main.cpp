@@ -163,7 +163,10 @@ void loop() {
     // Reset del cane da guardia ad ogni ciclo
     esp_task_wdt_reset();
 
+    thermo.checkHeartbeat(); 
+    
     unsigned long current_millis = millis();
+
     lv_tick_inc(current_millis - last_tick_millis);
     last_tick_millis = current_millis;
     

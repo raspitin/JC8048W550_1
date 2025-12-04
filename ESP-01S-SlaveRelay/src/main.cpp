@@ -9,15 +9,23 @@
 ESP8266WebServer server(80);
 
 void handleOn() {
-  digitalWrite(RELAY_PIN, LOW); // Attivo LOW per questo modulo
+  digitalWrite(RELAY_PIN, LOW); // Attivo LOW
   server.send(200, "application/json", "{\"status\":\"ON\"}");
-  Serial.println("Comando ricevuto: RELAY ON");
+  Serial.println("Comando: ON");
 }
 
 void handleOff() {
   digitalWrite(RELAY_PIN, HIGH); // Disattivo HIGH
   server.send(200, "application/json", "{\"status\":\"OFF\"}");
-  Serial.println("Comando ricevuto: RELAY OFF");
+  Serial.println("Comando: OFF");
+}
+
+// NUOVO: Endpoint per Heartbeat
+void handleStatus() {
+  int state = digitalRead(RELAY_PIN);
+  String s = (state == LOW) ? "ON" : "OFF";
+  server.send(200, "application/json", "{\"status\":\"" + s + "\"}");
+  Serial.println("Heartbeat Ping. Stato: " + s);
 }
 
 void setup() {
@@ -28,28 +36,23 @@ void setup() {
   WiFiManager wm;
   wm.setConfigPortalTimeout(180);
   
-  // Crea un AP chiamato "Relay_Setup" se non trova il WiFi
   if (!wm.autoConnect("Relay_Setup")) {
     Serial.println("Connessione fallita, riavvio...");
     ESP.restart();
   }
 
-  // Imposta IP Statico (FONDAMENTALE affinché il Master lo trovi)
-  // Modifica questi valori in base alla tua rete!
+  // Imposta IP Statico (Verifica che corrisponda a CONFIG.H del Master)
   IPAddress local_IP(192, 168, 1, 33);
   IPAddress gateway(192, 168, 1, 1);
   IPAddress subnet(255, 255, 255, 0);
-  
-  // Applica configurazione IP statico
   WiFi.config(local_IP, gateway, subnet);
 
   server.on("/on", handleOn);
   server.on("/off", handleOff);
+  server.on("/status", handleStatus); // Registra endpoint stato
   
   server.begin();
   Serial.println("Server Relè Avviato");
-  Serial.print("IP Address: ");
-  Serial.println(WiFi.localIP());
 }
 
 void loop() {

@@ -2,6 +2,7 @@
 #define THERMOSTAT_H
 
 #include <Arduino.h>
+#include <time.h>
 
 class Thermostat {
 public:
@@ -12,13 +13,34 @@ public:
     float getCurrentTemp();
     bool isHeatingState();
     float readLocalSensor();
-    void startHeating();
-    void stopHeating();
+    
+    // --- BOOST (Ora restituiscono bool per indicare successo connessione) ---
+    bool startBoost(int minutes);
+    bool stopBoost();
+    bool isBoostActive();
+    long getBoostRemainingSeconds();
+
+    // --- CONTROLLO DIRETTO ---
+    bool startHeating();
+    bool stopHeating();
+
+    // --- HEARTBEAT ---
+    void checkHeartbeat(); // Da chiamare nel loop principale
 
 private:
     float currentTemp = 0.0;
     float targetTemp = 20.0;
     bool isHeating = false;
+    
+    bool _boostActive = false;
+    time_t _boostEndTime = 0;
+
+    // Variabili Heartbeat
+    unsigned long _lastHeartbeatTime = 0;
+    bool _relayOnline = true; 
+
+    bool sendRelayCommand(bool turnOn);
+    bool pingRelay(); 
 };
 
 #endif
