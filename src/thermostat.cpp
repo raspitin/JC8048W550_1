@@ -7,11 +7,12 @@
 #include "config_manager.h"
 #include <time.h>
 
-#define HEARTBEAT_INTERVAL (20 * 60 * 1000)
+// Heartbeat ogni 60 secondi per rilevare rapidamente riconnessioni
+#define HEARTBEAT_INTERVAL (60 * 1000)
+#define SENSOR_READ_INTERVAL 5000 
 
 bool Thermostat::sendRelayCommand(bool turnOn) {
     bool success = false;
-
     #ifdef RELAY_PIN
         bool pinState = turnOn;
         if (RELAY_ACTIVE_LOW) pinState = !pinState; 
@@ -30,21 +31,11 @@ bool Thermostat::sendRelayCommand(bool turnOn) {
         String url = String("http://") + REMOTE_RELAY_IP + "/" + command + "?auth=" + token;
         
         http.setTimeout(2000); 
-        
         if (http.begin(url)) {
-            int httpCode = http.GET();
-            if (httpCode == 200) {
-                success = true;
-                _relayOnline = true;
-            } else {
-                Serial.printf("Relay Error: %d\n", httpCode);
-                _relayOnline = false;
-            }
+            if (http.GET() == 200) { success = true; _relayOnline = true; }
+            else { _relayOnline = false; }
             http.end();
-        } else {
-            Serial.println("Relay Connection Failed");
-            _relayOnline = false;
-        }
+        } else { _relayOnline = false; }
     } 
     return success;
 }
@@ -54,22 +45,22 @@ bool Thermostat::pingRelay() {
     HTTPClient http;
     String url = String("http://") + REMOTE_RELAY_IP + "/status";
     http.setTimeout(2000);
-    
     bool alive = false;
     if (http.begin(url)) {
         if (http.GET() == 200) alive = true;
         http.end();
     }
-    
     _relayOnline = alive;
-    if(alive) Serial.println("Heartbeat: OK");
-    else Serial.println("Heartbeat: PERSO");
+    // Log su seriale per debug
+    if(alive) Serial.println("Heartbeat: OK (Relay Online)");
+    else Serial.println("Heartbeat: FAIL (Relay Offline)");
     return alive;
 }
 
-void Thermostat::checkHeartbeat() {
+// Implementazione con parametro force
+void Thermostat::checkHeartbeat(bool force) {
     unsigned long now = millis();
-    if (now - _lastHeartbeatTime > HEARTBEAT_INTERVAL) {
+    if (force || (now - _lastHeartbeatTime > HEARTBEAT_INTERVAL)) {
         pingRelay();
         _lastHeartbeatTime = now;
     }
@@ -84,36 +75,53 @@ Thermostat::Thermostat() {
     #endif
 }
 
+void Thermostat::run() {
+    unsigned long now = millis();
+    // Lettura sensore ogni 5s
+    if (now - _lastSensorRead > SENSOR_READ_INTERVAL) {
+        float t = readLocalSensor();
+        update(t); 
+        _lastSensorRead = now;
+    }
+    // Heartbeat periodico
+    checkHeartbeat(false); 
+}
+
 bool Thermostat::startHeating() {
-    if (!isHeating) {
+    if (sendRelayCommand(true)) {
         isHeating = true;
         Serial.println(">>> CALDAIA ON <<<");
-        return sendRelayCommand(true);
+        return true;
     }
-    return true;
+    return false;
 }
 
 bool Thermostat::stopHeating() {
-    if (isHeating) {
+    if (sendRelayCommand(false)) {
         isHeating = false;
         Serial.println(">>> CALDAIA OFF <<<");
-        return sendRelayCommand(false);
+        return true;
     }
-    return true;
+    return false;
 }
 
 bool Thermostat::startBoost(int minutes) {
-    time_t now; time(&now);
-    _boostEndTime = now + (minutes * 60);
-    _boostActive = true;
-    targetTemp = TARGET_HEAT_ON; 
-    return startHeating();
+    if (startHeating()) {
+        time_t now; time(&now);
+        _boostEndTime = now + (minutes * 60);
+        _boostActive = true;
+        targetTemp = TARGET_HEAT_ON; 
+        return true;
+    }
+    _boostActive = false;
+    _boostEndTime = 0;
+    return false;
 }
 
 bool Thermostat::stopBoost() {
     _boostActive = false;
     _boostEndTime = 0;
-    update(currentTemp);
+    update(currentTemp); 
     return _relayOnline;
 }
 
@@ -133,10 +141,19 @@ long Thermostat::getBoostRemainingSeconds() {
     return (_boostEndTime - now);
 }
 
+bool Thermostat::isRelayOnline() {
+    return _relayOnline;
+}
+
 void Thermostat::update(float currentTemp) {
     this->currentTemp = currentTemp;
     time_t now; time(&now);
     struct tm *timeinfo = localtime(&now);
+
+    if (timeinfo->tm_year + 1900 < 2023) {
+        if (isHeating && !isBoostActive()) stopHeating();
+        return; 
+    }
 
     int day = timeinfo->tm_wday; 
     int slotIndex = timeinfo->tm_hour * 2 + (timeinfo->tm_min >= 30 ? 1 : 0);

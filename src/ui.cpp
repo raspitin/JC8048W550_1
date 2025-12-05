@@ -19,7 +19,7 @@ lv_obj_t *scr_impegni;
 lv_obj_t *ui_lbl_hour = NULL;
 lv_obj_t *ui_lbl_min = NULL;
 lv_obj_t *ui_lbl_dots = NULL;
-lv_obj_t *lbl_date;         // Mostra: Data + Lista Orari di oggi
+lv_obj_t *lbl_date;
 lv_obj_t *lbl_cur_temp_big; 
 lv_obj_t *lbl_cur_desc;
 lv_obj_t *cont_cur_icon;    
@@ -29,7 +29,8 @@ lv_obj_t *lbl_setup_ssid;
 lv_obj_t *lbl_setup_ip;
 lv_obj_t *lbl_setup_gw;
 
-// --- WIDGET HOME (BOOST) ---
+// --- WIDGET HOME (BOOST & RIEPILOGO) ---
+lv_obj_t *lbl_today_schedule; 
 lv_obj_t *btn_boost;          
 lv_obj_t *lbl_boost_status;   
 
@@ -47,7 +48,7 @@ static int source_day_for_copy = 0;
 #define TIMELINE_PAD_X 25 
 static int prev_drag_slot_idx = -1;   
 static int anchor_drag_slot_idx = -1; 
-static int last_updated_day = -1; // Cache per refresh ottimizzato
+static int last_updated_day = -1;
 
 // ============================================================================
 //  PROTOTIPI
@@ -56,7 +57,7 @@ void create_home_button(lv_obj_t *parent);
 void create_copy_popup(int sourceDayIndex);
 void refresh_intervals_display(int ui_idx); 
 void render_weather_icon(lv_obj_t *parent, String code);
-void update_main_info_label(bool force); // Funzione principale Data/Programma
+void update_main_info_label(bool force); 
 void create_boost_popup();
 void get_time_string_from_slot(int slot, char* buf);
 void show_relay_error_popup();
@@ -86,9 +87,10 @@ void show_relay_error_popup() {
     lv_obj_set_style_text_color(icon, lv_color_hex(0xFFD700), 0);
 
     lv_obj_t * lbl = lv_label_create(win);
-    lv_label_set_text(lbl, "ERRORE COMUNICAZIONE\n\nRelè non raggiungibile.\nControllare alimentazione\no riavviare manualmente.");
+    lv_label_set_text(lbl, "ERRORE COMUNICAZIONE\n\nRele' non raggiungibile.\nControllare alimentazione\no riavviarlo manualmente.");
     lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_width(lbl, 400);
 
     lv_obj_t * btn = lv_button_create(win);
@@ -98,6 +100,7 @@ void show_relay_error_popup() {
     
     lv_obj_t * l_btn = lv_label_create(btn);
     lv_label_set_text(l_btn, "ESCI");
+    lv_obj_set_style_text_color(l_btn, lv_color_hex(0xFFFFFF), 0);
     lv_obj_center(l_btn);
 }
 
@@ -145,6 +148,7 @@ void create_boost_popup() {
     lv_obj_t * title = lv_label_create(win);
     lv_label_set_text(title, "Accensione Temporizzata");
     lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
 
     lv_obj_t * cont_sel = lv_obj_create(win);
     lv_obj_set_size(cont_sel, 300, 100);
@@ -160,6 +164,7 @@ void create_boost_popup() {
 
     lbl_popup_minutes = lv_label_create(cont_sel);
     lv_obj_set_style_text_font(lbl_popup_minutes, &lv_font_montserrat_36, 0);
+    lv_obj_set_style_text_color(lbl_popup_minutes, lv_color_hex(0xFFFFFF), 0);
     lv_label_set_text(lbl_popup_minutes, "30 min");
 
     lv_obj_t * btn_p = lv_button_create(cont_sel);
@@ -188,6 +193,11 @@ void create_boost_popup() {
 }
 
 static void btn_boost_click_cb(lv_event_t * e) {
+    if (!thermo.isRelayOnline()) {
+        show_relay_error_popup();
+        return;
+    }
+
     if(thermo.isBoostActive()) {
         bool ok = thermo.stopBoost(); 
         if(!ok) show_relay_error_popup();
@@ -207,7 +217,6 @@ void get_time_string_from_slot(int slot, char* buf) {
     sprintf(buf, "%02d:%02d", h, m);
 }
 
-// Questa funzione gestisce sia la data che la lista degli orari
 void update_main_info_label(bool force) {
     if(!lbl_date) return;
     
@@ -216,21 +225,17 @@ void update_main_info_label(bool force) {
     struct tm *timeinfo = localtime(&now);
     int day_idx = timeinfo->tm_wday; 
     
-    // Se la data non è sincronizzata (anno < 2023), mostriamo attesa
     if (timeinfo->tm_year + 1900 < 2023) {
         lv_label_set_text(lbl_date, "In attesa di orario...");
         return;
     }
     
-    // Aggiorna solo se cambia il giorno o se forzato
     if (!force && day_idx == last_updated_day) return;
-
     last_updated_day = day_idx;
 
     const char* days[] = {"Domenica", "Lunedi'", "Martedi'", "Mercoledi'", "Giovedi'", "Venerdi'", "Sabato"};
     const char* months[] = {"Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"};
     
-    // Intestazione
     String text = "Accensioni per oggi " + String(days[day_idx]) + " " + String(timeinfo->tm_mday) + " " + String(months[timeinfo->tm_mon]) + ":\n";
 
     uint64_t slots = configManager.data.weekSchedule[day_idx].timeSlots;
@@ -240,7 +245,6 @@ void update_main_info_label(bool force) {
     } else {
         int i = 0;
         int count = 0;
-        // Cerca fino a 3 righe per non intasare lo schermo
         while(i < 48 && count < 3) {
             if ((slots >> i) & 1ULL) {
                 int start = i;
@@ -333,6 +337,7 @@ void create_home_button(lv_obj_t *parent) {
     lv_obj_center(label);
     lv_obj_add_event_cb(btn, nav_event_cb, LV_EVENT_CLICKED, scr_main);
 }
+
 
 // ============================================================================
 //  TIMELINE
@@ -511,6 +516,10 @@ void create_copy_popup(int uiDayIndex) {
     lv_obj_set_flex_flow(win, LV_FLEX_FLOW_COLUMN); lv_obj_set_flex_align(win, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_bg_color(win, lv_color_hex(0x202020), 0); lv_obj_set_style_border_color(win, lv_color_hex(0xFFFFFF), 0); lv_obj_set_style_border_width(win, 2, 0);
     lv_obj_set_flex_flow(win, LV_FLEX_FLOW_COLUMN); lv_obj_set_flex_align(win, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_bg_color(win, lv_color_hex(0x202020), 0); lv_obj_set_style_border_color(win, lv_color_hex(0xFFFFFF), 0); lv_obj_set_style_border_width(win, 2, 0);
+    lv_obj_set_flex_flow(win, LV_FLEX_FLOW_COLUMN); lv_obj_set_flex_align(win, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_bg_color(win, lv_color_hex(0x202020), 0); lv_obj_set_style_border_color(win, lv_color_hex(0xFFFFFF), 0); lv_obj_set_style_border_width(win, 2, 0);
+    lv_obj_set_flex_flow(win, LV_FLEX_FLOW_COLUMN); lv_obj_set_flex_align(win, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_t * title = lv_label_create(win); lv_label_set_text(title, "Copia su altri giorni:");
     lv_obj_t * cont_checks = lv_obj_create(win); lv_obj_set_size(cont_checks, 450, 180); lv_obj_set_flex_flow(cont_checks, LV_FLEX_FLOW_ROW_WRAP);
     const char* names[] = {"Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"};
@@ -588,7 +597,6 @@ void build_scr_program() {
     }
     lv_obj_t * content = lv_tabview_get_content(tv_days);
     lv_obj_remove_flag(content, LV_OBJ_FLAG_SCROLLABLE);
-
     create_home_button(scr_program);
 }
 
@@ -646,7 +654,6 @@ void build_scr_main() {
     ui_lbl_min = lv_label_create(cont_clock); lv_obj_set_style_text_font(ui_lbl_min, &lv_font_montserrat_36, 0); 
     lv_obj_set_style_text_color(ui_lbl_min, lv_color_hex(0xFFFFFF), 0); lv_label_set_text(ui_lbl_min, "00");
 
-    // DATA + RIEPILOGO
     lbl_date = lv_label_create(col_left); 
     lv_obj_set_style_text_font(lbl_date, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(lbl_date, lv_color_hex(0xAAAAAA), 0); 
@@ -758,19 +765,29 @@ void update_ui() {
 
     // Aggiorna Stato Boost
     if (act == scr_main) {
-        if (thermo.isBoostActive()) {
+        
+        // LOGICA COLORE PULSANTE
+        if (!thermo.isRelayOnline()) {
+            // RELÈ OFFLINE -> GRIGIO
+            lv_obj_set_style_bg_color(btn_boost, lv_color_hex(0x555555), 0); 
+            lv_label_set_text(lbl_boost_status, "Rele' Offline");
+        } 
+        else if (thermo.isBoostActive()) {
+            // BOOST ATTIVO -> ARANCIO
             lv_obj_set_style_bg_color(btn_boost, lv_color_hex(0xE67E22), 0); 
             long rem = thermo.getBoostRemainingSeconds();
             int min = rem / 60;
             lv_label_set_text_fmt(lbl_boost_status, "Che caldo!!!\n-%d min", min);
-        } else {
+        } 
+        else {
+            // STANDBY -> BLU
             lv_obj_set_style_bg_color(btn_boost, lv_color_hex(0x3498DB), 0); 
             lv_label_set_text(lbl_boost_status, "Brr che freddo!!!");
         }
+        
         update_main_info_label(false);
     }
 
-    // Orologio
     if (act == scr_main && timeinfo->tm_year > 120) {
         char bufHour[4]; char bufMin[4];
         strftime(bufHour, sizeof(bufHour), "%H", timeinfo); strftime(bufMin, sizeof(bufMin), "%M", timeinfo);

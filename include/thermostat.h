@@ -7,6 +7,10 @@
 class Thermostat {
 public:
     Thermostat();
+    
+    // Metodo principale da chiamare nel loop()
+    void run(); 
+
     void update(float currentTemp);
     void setTarget(float target);
     float getTarget();
@@ -14,18 +18,20 @@ public:
     bool isHeatingState();
     float readLocalSensor();
     
-    // Boost (ritorna bool per successo connessione)
+    // Boost
     bool startBoost(int minutes);
     bool stopBoost();
     bool isBoostActive();
     long getBoostRemainingSeconds();
 
-    // Controllo manuale (ritorna bool per successo connessione)
+    // Manuale
     bool startHeating();
     bool stopHeating();
 
-    // Heartbeat
-    void checkHeartbeat();
+    // Heartbeat & Stato
+    // Il parametro 'force' permette di controllare subito senza aspettare il timer
+    void checkHeartbeat(bool force = false);
+    bool isRelayOnline(); 
 
 private:
     float currentTemp = 0.0;
@@ -36,6 +42,7 @@ private:
     time_t _boostEndTime = 0;
 
     unsigned long _lastHeartbeatTime = 0;
+    unsigned long _lastSensorRead = 0; 
     bool _relayOnline = true; 
 
     bool sendRelayCommand(bool turnOn);
