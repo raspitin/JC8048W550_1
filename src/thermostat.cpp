@@ -7,20 +7,99 @@
 #include "config_manager.h"
 #include <time.h>
 
-// Heartbeat ogni 60 secondi per rilevare rapidamente riconnessioni
-#define HEARTBEAT_INTERVAL (60 * 1000)
 #define SENSOR_READ_INTERVAL 5000 
+#define RELAY_TIMEOUT_MS 15000 
+#define HEARTBEAT_INTERVAL (60 * 1000)
+
+Thermostat::Thermostat() {
+    #ifdef RELAY_PIN
+    if (RELAY_PIN >= 0) {
+        pinMode(RELAY_PIN, OUTPUT);
+        digitalWrite(RELAY_PIN, RELAY_ACTIVE_LOW ? HIGH : LOW);
+    }
+    #endif
+    // IP di default finché non viene scoperto
+    _relayIP.fromString(DEFAULT_REMOTE_RELAY_IP);
+}
+
+void Thermostat::setup() {
+    _discoveryUdp.begin(DISCOVERY_PORT);
+}
+
+void Thermostat::checkDiscovery() {
+    int packetSize = _discoveryUdp.parsePacket();
+    if (packetSize) {
+        char packetBuffer[255];
+        int len = _discoveryUdp.read(packetBuffer, 255);
+        if (len > 0) packetBuffer[len] = 0;
+        
+        if (String(packetBuffer).startsWith(DISCOVERY_PACKET_CONTENT)) {
+            IPAddress newIP = _discoveryUdp.remoteIP();
+            if (newIP != _relayIP || !_relayOnline) {
+                Serial.print("Relè Trovato: ");
+                Serial.println(newIP.toString());
+            }
+            _relayIP = newIP;
+            _relayOnline = true;
+            _lastPacketTime = millis();
+        }
+    }
+
+    if (_relayOnline && (millis() - _lastPacketTime > RELAY_TIMEOUT_MS)) {
+        Serial.println("Relè Perso (Timeout UDP)");
+        _relayOnline = false;
+    }
+}
+
+// Implementazione checkHeartbeat con parametro force
+void Thermostat::checkHeartbeat(bool force) {
+    unsigned long now = millis();
+    // Se forzato o scaduto timer, prova anche un ping HTTP per certezza
+    if (force || (now - _lastHeartbeatTime > HEARTBEAT_INTERVAL)) {
+        pingRelay();
+        _lastHeartbeatTime = now;
+    }
+}
+
+bool Thermostat::pingRelay() {
+    if (WiFi.status() != WL_CONNECTED) return false;
+    
+    // Usa l'IP scoperto o quello di default
+    String ip = _relayOnline ? _relayIP.toString() : String(DEFAULT_REMOTE_RELAY_IP);
+    
+    HTTPClient http;
+    String url = String("http://") + ip + "/status";
+    http.setTimeout(1500);
+    
+    bool alive = false;
+    if (http.begin(url)) {
+        if (http.GET() == 200) alive = true;
+        http.end();
+    }
+    
+    if (alive) {
+        _relayOnline = true;
+        _lastPacketTime = millis(); // Resetta anche il timeout UDP se risponde via HTTP
+        Serial.println("Heartbeat HTTP: OK");
+    }
+    return alive;
+}
 
 bool Thermostat::sendRelayCommand(bool turnOn) {
     bool success = false;
+    
     #ifdef RELAY_PIN
+    if (RELAY_PIN >= 0) {
         bool pinState = turnOn;
         if (RELAY_ACTIVE_LOW) pinState = !pinState; 
         digitalWrite(RELAY_PIN, pinState);
         success = true; 
+    }
     #endif
 
     if (WiFi.status() == WL_CONNECTED) {
+        String ip = _relayOnline ? _relayIP.toString() : String(DEFAULT_REMOTE_RELAY_IP);
+        
         HTTPClient http;
         time_t now; time(&now);
         struct tm *timeinfo = localtime(&now);
@@ -28,64 +107,39 @@ bool Thermostat::sendRelayCommand(bool turnOn) {
         const char* token = SECRET_TOKENS[currentMinute];
         
         String command = turnOn ? "on" : "off";
-        String url = String("http://") + REMOTE_RELAY_IP + "/" + command + "?auth=" + token;
+        String url = "http://" + ip + "/" + command + "?auth=" + token;
         
-        http.setTimeout(2000); 
+        http.setTimeout(1500); 
         if (http.begin(url)) {
-            if (http.GET() == 200) { success = true; _relayOnline = true; }
-            else { _relayOnline = false; }
+            if (http.GET() == 200) {
+                success = true;
+                _relayOnline = true;
+                _lastPacketTime = millis();
+            }
             http.end();
-        } else { _relayOnline = false; }
+        }
     } 
     return success;
 }
 
-bool Thermostat::pingRelay() {
-    if (WiFi.status() != WL_CONNECTED) return false;
-    HTTPClient http;
-    String url = String("http://") + REMOTE_RELAY_IP + "/status";
-    http.setTimeout(2000);
-    bool alive = false;
-    if (http.begin(url)) {
-        if (http.GET() == 200) alive = true;
-        http.end();
-    }
-    _relayOnline = alive;
-    // Log su seriale per debug
-    if(alive) Serial.println("Heartbeat: OK (Relay Online)");
-    else Serial.println("Heartbeat: FAIL (Relay Offline)");
-    return alive;
-}
-
-// Implementazione con parametro force
-void Thermostat::checkHeartbeat(bool force) {
-    unsigned long now = millis();
-    if (force || (now - _lastHeartbeatTime > HEARTBEAT_INTERVAL)) {
-        pingRelay();
-        _lastHeartbeatTime = now;
-    }
-}
-
-Thermostat::Thermostat() {
-    #ifdef RELAY_PIN
-        pinMode(RELAY_PIN, OUTPUT);
-        bool pinState = false;
-        if (RELAY_ACTIVE_LOW) pinState = !pinState;
-        digitalWrite(RELAY_PIN, pinState);
-    #endif
-}
-
 void Thermostat::run() {
+    if (WiFi.status() == WL_CONNECTED) {
+        checkDiscovery();
+    }
+
     unsigned long now = millis();
-    // Lettura sensore ogni 5s
     if (now - _lastSensorRead > SENSOR_READ_INTERVAL) {
         float t = readLocalSensor();
         update(t); 
         _lastSensorRead = now;
     }
+    
     // Heartbeat periodico
-    checkHeartbeat(false); 
+    checkHeartbeat(false);
 }
+
+bool Thermostat::isRelayOnline() { return _relayOnline; }
+String Thermostat::getRelayIP() { return _relayIP.toString(); }
 
 bool Thermostat::startHeating() {
     if (sendRelayCommand(true)) {
@@ -114,7 +168,6 @@ bool Thermostat::startBoost(int minutes) {
         return true;
     }
     _boostActive = false;
-    _boostEndTime = 0;
     return false;
 }
 
@@ -122,7 +175,7 @@ bool Thermostat::stopBoost() {
     _boostActive = false;
     _boostEndTime = 0;
     update(currentTemp); 
-    return _relayOnline;
+    return isRelayOnline();
 }
 
 bool Thermostat::isBoostActive() {
@@ -139,10 +192,6 @@ long Thermostat::getBoostRemainingSeconds() {
     if (!isBoostActive()) return 0;
     time_t now; time(&now);
     return (_boostEndTime - now);
-}
-
-bool Thermostat::isRelayOnline() {
-    return _relayOnline;
 }
 
 void Thermostat::update(float currentTemp) {
