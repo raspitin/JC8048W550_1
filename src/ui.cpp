@@ -5,6 +5,8 @@
 #include <WiFi.h>
 #include <time.h>
 #include "config.h" 
+#include <LittleFS.h>     // <--- NUOVO
+#include <ArduinoJson.h>  // <--- NUOVO
 
 #include "thermostat.h"
 extern Thermostat thermo;
@@ -19,7 +21,7 @@ lv_obj_t *scr_impegni;
 lv_obj_t *ui_lbl_hour = NULL;
 lv_obj_t *ui_lbl_min = NULL;
 lv_obj_t *ui_lbl_dots = NULL;
-lv_obj_t *lbl_date;
+lv_obj_t *lbl_date;         
 lv_obj_t *lbl_cur_temp_big; 
 lv_obj_t *lbl_cur_desc;
 lv_obj_t *cont_cur_icon;    
@@ -29,7 +31,7 @@ lv_obj_t *lbl_setup_ssid;
 lv_obj_t *lbl_setup_ip;
 lv_obj_t *lbl_setup_gw;
 
-// --- WIDGET HOME (BOOST & RIEPILOGO) ---
+// --- WIDGET HOME (BOOST) ---
 lv_obj_t *lbl_today_schedule; 
 lv_obj_t *btn_boost;          
 lv_obj_t *lbl_boost_status;   
@@ -44,6 +46,9 @@ lv_obj_t *lbl_intervals[7];
 lv_obj_t *lbl_drag_info[7];
 static lv_obj_t * checkboxes[7]; 
 static int source_day_for_copy = 0; 
+
+// --- WIDGET IMPEGNI ---
+lv_obj_t *list_impegni; // Oggetto lista LVGL
 
 #define TIMELINE_PAD_X 25 
 static int prev_drag_slot_idx = -1;   
@@ -61,10 +66,12 @@ void update_main_info_label(bool force);
 void create_boost_popup();
 void get_time_string_from_slot(int slot, char* buf);
 void show_relay_error_popup();
+void load_impegni_to_ui(); // Nuova funzione
 
-// ============================================================================
-//  POPUP ERRORE COMUNICAZIONE
-// ============================================================================
+// ... [TUTTE LE ALTRE FUNZIONI BOOST, POPUP, TIMELINE, ECC. RIMANGONO IDENTICHE A PRIMA] ...
+// (Per brevità copio solo le parti modificate o nuove, ma tu devi incollare tutto il file completo)
+// ...
+// INCOLLO QUI LE FUNZIONI STANDARD CHE ABBIAMO GIÀ SCRITTO, PER AVERE UN FILE COMPLETO
 
 static void error_popup_close_cb(lv_event_t * e) {
     lv_obj_t * win = (lv_obj_t *)lv_event_get_user_data(e);
@@ -87,7 +94,7 @@ void show_relay_error_popup() {
     lv_obj_set_style_text_color(icon, lv_color_hex(0xFFD700), 0);
 
     lv_obj_t * lbl = lv_label_create(win);
-    lv_label_set_text(lbl, "ERRORE COMUNICAZIONE\n\nRele' non raggiungibile.\nControllare alimentazione\no riavviarlo manualmente.");
+    lv_label_set_text(lbl, "ERRORE COMUNICAZIONE\n\nRelè non raggiungibile.\nControllare alimentazione\no riavviarlo manualmente.");
     lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
@@ -103,10 +110,6 @@ void show_relay_error_popup() {
     lv_obj_set_style_text_color(l_btn, lv_color_hex(0xFFFFFF), 0);
     lv_obj_center(l_btn);
 }
-
-// ============================================================================
-//  LOGICA BOOST
-// ============================================================================
 
 static void boost_plus_cb(lv_event_t * e) {
     boost_minutes_selection += 30;
@@ -135,7 +138,6 @@ static void boost_cancel_cb(lv_event_t * e) {
 
 void create_boost_popup() {
     boost_minutes_selection = 30; 
-
     lv_obj_t * win = lv_obj_create(lv_scr_act());
     lv_obj_set_size(win, 400, 320);
     lv_obj_center(win);
@@ -206,10 +208,6 @@ static void btn_boost_click_cb(lv_event_t * e) {
     }
 }
 
-// ============================================================================
-//  HELPER ORARI E AGGIORNAMENTO HOME
-// ============================================================================
-
 void get_time_string_from_slot(int slot, char* buf) {
     if(slot > 48) slot = 48;
     int h = slot / 2;
@@ -267,9 +265,6 @@ void update_main_info_label(bool force) {
     lv_label_set_text(lbl_date, text.c_str());
 }
 
-// ============================================================================
-//  FUNZIONI GRAFICHE
-// ============================================================================
 void clear_icon(lv_obj_t *parent) { lv_obj_clean(parent); }
 lv_obj_t* draw_circle(lv_obj_t *parent, int w, int h, int x, int y, uint32_t color) {
     lv_obj_t *c = lv_obj_create(parent); lv_obj_set_size(c, w, h); lv_obj_set_style_radius(c, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(c, lv_color_hex(color), 0); lv_obj_set_style_border_width(c, 0, 0); lv_obj_align(c, LV_ALIGN_CENTER, x, y); return c;
@@ -293,13 +288,14 @@ void render_weather_icon(lv_obj_t *parent, String code) {
     else draw_icon_cloud(parent);
 }
 
-// ============================================================================
-//  NAVIGAZIONE
-// ============================================================================
-
 static void nav_event_cb(lv_event_t * e) {
     lv_obj_t * target_screen = (lv_obj_t *)lv_event_get_user_data(e);
-    if(target_screen) lv_scr_load_anim(target_screen, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
+    if(target_screen) {
+        // Refresh automatico della pagina quando viene caricata
+        if(target_screen == scr_impegni) load_impegni_to_ui(); 
+        
+        lv_scr_load_anim(target_screen, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
+    }
 }
 
 static void msgbox_close_cb(lv_event_t * e) {
@@ -338,18 +334,56 @@ void create_home_button(lv_obj_t *parent) {
     lv_obj_add_event_cb(btn, nav_event_cb, LV_EVENT_CLICKED, scr_main);
 }
 
+// ============================================================================
+//  LOGICA IMPEGNI (CARICAMENTO DA FILE)
+// ============================================================================
 
-// ============================================================================
-//  TIMELINE
-// ============================================================================
+void load_impegni_to_ui() {
+    // Pulisci lista attuale
+    lv_obj_clean(list_impegni);
+    
+    if (!LittleFS.exists("/impegni.json")) {
+        lv_obj_t * lbl = lv_label_create(list_impegni);
+        lv_label_set_text(lbl, "Nessun impegno salvato.");
+        lv_obj_set_style_text_color(lbl, lv_color_hex(0x888888), 0);
+        return;
+    }
+
+    File file = LittleFS.open("/impegni.json", "r");
+    if (!file) return;
+
+    // Parsing JSON
+    DynamicJsonDocument doc(4096);
+    DeserializationError error = deserializeJson(doc, file);
+    file.close();
+
+    if (error) {
+        lv_obj_t * lbl = lv_label_create(list_impegni);
+        lv_label_set_text(lbl, "Errore caricamento impegni.");
+        return;
+    }
+
+    JsonArray arr = doc.as<JsonArray>();
+    for (JsonVariant v : arr) {
+        String imp = v.as<String>();
+        
+        // Crea pulsante lista
+        lv_obj_t * btn = lv_list_add_btn(list_impegni, LV_SYMBOL_BULLET, imp.c_str());
+        lv_obj_set_style_text_font(btn, &lv_font_montserrat_20, 0);
+        lv_obj_set_style_bg_color(btn, lv_color_hex(0x202020), 0);
+        lv_obj_set_style_text_color(btn, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_border_width(btn, 0, 0);
+        lv_obj_set_style_pad_all(btn, 15, 0);
+    }
+}
+
 void refresh_intervals_display(int ui_idx) {
     if(ui_idx < 0 || ui_idx >= 7) return;
     if(!lbl_intervals[ui_idx]) return;
     int config_idx = (ui_idx + 1) % 7;
     uint64_t slots = configManager.data.weekSchedule[config_idx].timeSlots;
     String text = "";
-    int count = 0;
-    int i = 0;
+    int count = 0; int i = 0;
     while(i < 48 && count < 3) {
         if ((slots >> i) & 1ULL) {
             int start = i;
@@ -371,6 +405,8 @@ void refresh_intervals_display(int ui_idx) {
     lv_label_set_text(lbl_intervals[ui_idx], text.c_str());
 }
 
+// ... (TIMELINE DRAW / INPUT / LOGIC RIMANGONO UGUALI AL CODICE PRECEDENTE) ...
+// PER BREVITA' COPIO IL RESTO DELLE FUNZIONI CHE SONO GIA' OK
 static void timeline_draw_event_cb(lv_event_t * e) {
     lv_obj_t * obj = (lv_obj_t*)lv_event_get_target(e);
     int day_idx = (int)(intptr_t)lv_event_get_user_data(e);
@@ -383,27 +419,21 @@ static void timeline_draw_event_cb(lv_event_t * e) {
     uint64_t slots = configManager.data.weekSchedule[day_idx].timeSlots;
     float slot_w = (float)w_draw / 48.0;
     int available_h = h - 25; int bar_h = available_h * 0.4; int bar_y_offset = (available_h - bar_h) / 2 + 5; 
-
     lv_draw_rect_dsc_t dsc_bg; lv_draw_rect_dsc_init(&dsc_bg);
     dsc_bg.bg_color = lv_color_hex(0x333333); dsc_bg.bg_opa = LV_OPA_COVER; dsc_bg.radius = 4; 
     lv_area_t bg_area; bg_area.x1 = x_start_draw; bg_area.x2 = x_start_draw + w_draw - 1; bg_area.y1 = y_start + bar_y_offset; bg_area.y2 = bg_area.y1 + bar_h;
     lv_draw_rect(layer, &dsc_bg, &bg_area);
-
     lv_draw_rect_dsc_t dsc_on; lv_draw_rect_dsc_init(&dsc_on);
     dsc_on.bg_color = lv_color_hex(0x27AE60); dsc_on.bg_opa = LV_OPA_COVER; dsc_on.radius = 4;
     int i = 0;
     while(i < 48) {
         if ((slots >> i) & 1ULL) {
-            int start_i = i;
-            while(i < 48 && ((slots >> i) & 1ULL)) i++;
-            int end_i = i; 
-            int x1 = x_start_draw + (int)(start_i * slot_w);
-            int x2 = x_start_draw + (int)(end_i * slot_w) - 1;
+            int start_i = i; while(i < 48 && ((slots >> i) & 1ULL)) i++; int end_i = i; 
+            int x1 = x_start_draw + (int)(start_i * slot_w); int x2 = x_start_draw + (int)(end_i * slot_w) - 1;
             lv_area_t on_area; on_area.x1 = x1; on_area.x2 = x2; on_area.y1 = y_start + bar_y_offset; on_area.y2 = on_area.y1 + bar_h;
             lv_draw_rect(layer, &dsc_on, &on_area);
         } else i++;
     }
-
     lv_draw_label_dsc_t label_dsc; lv_draw_label_dsc_init(&label_dsc);
     label_dsc.color = lv_color_hex(0xFFFFFF); label_dsc.font = &lv_font_montserrat_14; label_dsc.align = LV_TEXT_ALIGN_CENTER;
     for(int h_idx=0; h_idx<=24; h_idx+=4) {
@@ -422,20 +452,14 @@ static void timeline_input_event_cb(lv_event_t * e) {
     lv_obj_t * obj = (lv_obj_t*)lv_event_get_target(e);
     int ui_idx = (int)(intptr_t)lv_event_get_user_data(e);
     int config_idx = (ui_idx + 1) % 7;
-    
     if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
         prev_drag_slot_idx = -1; anchor_drag_slot_idx = -1;
         lv_label_set_text(lbl_drag_info[ui_idx], "Trascina per selezionare orari");
-        refresh_intervals_display(ui_idx); 
-        configManager.saveConfig();
-        update_main_info_label(true); // Refresh Home
-        return;
+        refresh_intervals_display(ui_idx); configManager.saveConfig(); update_main_info_label(true); return;
     }
     if (code == LV_EVENT_PRESSED) { prev_drag_slot_idx = -1; anchor_drag_slot_idx = -1; }
-
     if (code == LV_EVENT_PRESSED || code == LV_EVENT_PRESSING) {
-        lv_indev_t * indev = lv_indev_get_act();
-        if(!indev) return;
+        lv_indev_t * indev = lv_indev_get_act(); if(!indev) return;
         lv_point_t p; lv_indev_get_point(indev, &p);
         lv_area_t coords; lv_obj_get_coords(obj, &coords);
         int w = lv_obj_get_width(obj); int w_draw = w - (2 * TIMELINE_PAD_X);
@@ -443,14 +467,11 @@ static void timeline_input_event_cb(lv_event_t * e) {
         if(rel_x < 0) rel_x = 0; if(rel_x >= w_draw) rel_x = w_draw - 1;
         int current_slot_idx = (rel_x * 48) / w_draw;
         if(current_slot_idx < 0) current_slot_idx = 0; if(current_slot_idx > 47) current_slot_idx = 47;
-        
         if(anchor_drag_slot_idx == -1) anchor_drag_slot_idx = current_slot_idx;
-        
         int drag_start = (anchor_drag_slot_idx < current_slot_idx) ? anchor_drag_slot_idx : current_slot_idx;
         int drag_end = (anchor_drag_slot_idx < current_slot_idx) ? current_slot_idx : anchor_drag_slot_idx;
         char bufS[6], bufE[6]; get_time_string_from_slot(drag_start, bufS); get_time_string_from_slot(drag_end + 1, bufE);
         lv_label_set_text_fmt(lbl_drag_info[ui_idx], "Selezionando: %s - %s", bufS, bufE);
-
         int start_fill = current_slot_idx; int end_fill = current_slot_idx;
         if (code == LV_EVENT_PRESSING && prev_drag_slot_idx != -1) {
             if (current_slot_idx > prev_drag_slot_idx) { start_fill = prev_drag_slot_idx; end_fill = current_slot_idx; } else { start_fill = current_slot_idx; end_fill = prev_drag_slot_idx; }
@@ -461,8 +482,7 @@ static void timeline_input_event_cb(lv_event_t * e) {
         float slot_w = (float)w_draw / 48.0; int x_base = coords.x1 + TIMELINE_PAD_X;
         for(int i = start_fill; i <= end_fill; i++) {
             if ( !((*slots >> i) & 1ULL) ) {
-                *slots |= (1ULL << i);
-                changed = true;
+                *slots |= (1ULL << i); changed = true;
                 int sx1 = x_base + (int)(i * slot_w); int sx2 = x_base + (int)((i + 1) * slot_w);
                 if(sx1 < min_x_inv) min_x_inv = sx1; if(sx2 > max_x_inv) max_x_inv = sx2;
             }
@@ -474,20 +494,16 @@ static void timeline_input_event_cb(lv_event_t * e) {
         prev_drag_slot_idx = current_slot_idx;
     }
 }
-
 static void clear_prog_cb(lv_event_t * e) {
     int ui_idx = (int)(intptr_t)lv_event_get_user_data(e);
     int config_idx = (ui_idx + 1) % 7;
     configManager.data.weekSchedule[config_idx].timeSlots = 0;
     if(timelines[ui_idx]) lv_obj_invalidate(timelines[ui_idx]);
     refresh_intervals_display(ui_idx);
-    
     time_t now; time(&now); struct tm *timeinfo = localtime(&now);
     if (timeinfo->tm_wday == config_idx) update_main_info_label(true);
-    
     configManager.saveConfig();
 }
-
 static void copy_confirm_cb(lv_event_t * e) {
     lv_obj_t * win = (lv_obj_t *)lv_event_get_user_data(e);
     uint64_t pattern = configManager.data.weekSchedule[source_day_for_copy].timeSlots;
@@ -503,17 +519,10 @@ static void copy_confirm_cb(lv_event_t * e) {
     configManager.saveConfig();
     lv_obj_delete(win);
 }
-
 static void copy_cancel_cb(lv_event_t * e) { lv_obj_t * win = (lv_obj_t *)lv_event_get_user_data(e); lv_obj_delete(win); }
-
 void create_copy_popup(int uiDayIndex) {
     int configDayIndex = (uiDayIndex + 1) % 7; source_day_for_copy = configDayIndex;
     lv_obj_t * win = lv_obj_create(lv_scr_act()); lv_obj_set_size(win, 500, 350); lv_obj_center(win);
-    lv_obj_set_style_bg_color(win, lv_color_hex(0x202020), 0); lv_obj_set_style_border_color(win, lv_color_hex(0xFFFFFF), 0); lv_obj_set_style_border_width(win, 2, 0);
-    lv_obj_set_flex_flow(win, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(win, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_bg_color(win, lv_color_hex(0x202020), 0); lv_obj_set_style_border_color(win, lv_color_hex(0xFFFFFF), 0); lv_obj_set_style_border_width(win, 2, 0);
-    lv_obj_set_flex_flow(win, LV_FLEX_FLOW_COLUMN); lv_obj_set_flex_align(win, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_bg_color(win, lv_color_hex(0x202020), 0); lv_obj_set_style_border_color(win, lv_color_hex(0xFFFFFF), 0); lv_obj_set_style_border_width(win, 2, 0);
     lv_obj_set_flex_flow(win, LV_FLEX_FLOW_COLUMN); lv_obj_set_flex_align(win, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_bg_color(win, lv_color_hex(0x202020), 0); lv_obj_set_style_border_color(win, lv_color_hex(0xFFFFFF), 0); lv_obj_set_style_border_width(win, 2, 0);
@@ -605,14 +614,20 @@ void build_scr_impegni() {
     lv_obj_t *title = lv_label_create(scr_impegni); lv_obj_set_style_text_font(title, &lv_font_montserrat_36, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0); lv_label_set_text(title, "Impegni");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 40);
-    lv_obj_t *desc = lv_label_create(scr_impegni); lv_label_set_text(desc, "Lista Impegni / Memo\n(Feature Futura)");
-    lv_obj_set_style_text_align(desc, LV_TEXT_ALIGN_CENTER, 0); lv_obj_set_style_text_color(desc, lv_color_hex(0xAAAAAA), 0);
-    lv_obj_center(desc);
+    
+    // LISTA IMPEGNI
+    list_impegni = lv_list_create(scr_impegni);
+    lv_obj_set_size(list_impegni, 700, 350);
+    lv_obj_align(list_impegni, LV_ALIGN_CENTER, 0, 20);
+    lv_obj_set_style_bg_color(list_impegni, lv_color_hex(0x101015), 0);
+    lv_obj_set_style_border_width(list_impegni, 0, 0);
+    
     create_home_button(scr_impegni);
 }
 
 void build_scr_setup() {
     lv_obj_set_style_bg_color(scr_setup, lv_color_hex(0x1C1E26), 0);
+    lv_obj_set_style_text_color(scr_setup, lv_color_hex(0xFFFFFF), 0);
     lv_obj_t *title = lv_label_create(scr_setup); lv_obj_set_style_text_font(title, &lv_font_montserrat_36, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0); lv_label_set_text(title, "Impostazioni");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
@@ -680,6 +695,7 @@ void build_scr_main() {
     lv_obj_set_style_text_align(lbl_cur_desc, LV_TEXT_ALIGN_LEFT, 0); lv_label_set_long_mode(lbl_cur_desc, LV_LABEL_LONG_SCROLL_CIRCULAR);
     lv_label_set_text(lbl_cur_desc, "---");
 
+    // Area Basso Sinistra (Pulsante BOOST)
     lv_obj_t *bot_section = lv_obj_create(col_left); lv_obj_set_size(bot_section, 630, 100); 
     lv_obj_set_style_bg_opa(bot_section, 0, 0); lv_obj_set_style_border_width(bot_section, 0, 0);
     lv_obj_align(bot_section, LV_ALIGN_BOTTOM_LEFT, 10, -10);
