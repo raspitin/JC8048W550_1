@@ -13,6 +13,7 @@
 #include <time.h>      
 #include "secrets.h"
 #include "config.h"
+#include "mqtt_manager.h"
 
 #define WDT_TIMEOUT 10
 
@@ -93,7 +94,7 @@ void setup() {
     if (isOnline) {
         syslog.server(SYSLOG_SERVER, SYSLOG_PORT);
         logMsg("Avvio Sistema. Heap: " + String(ESP.getFreeHeap()));
-
+        mqtt_setup(); // <--- Avvia MQTT
         configTime(0, 0, "it.pool.ntp.org", "time.nist.gov", "pool.ntp.org");
         setenv("TZ", configManager.data.timezone, 1);
         tzset();
@@ -116,6 +117,18 @@ void setup() {
 
 void loop() {
     esp_task_wdt_reset();
+
+    if (isOnline) {
+        mqtt_loop(); // <--- Mantieni vivo MQTT
+    }
+
+    // 4. UI UPDATE
+    // ... all'interno del timer 500ms o più lento (es. ogni 5 sec per MQTT) ...
+    static unsigned long last_mqtt_pub = 0;
+    if (millis() - last_mqtt_pub > 5000) { // Pubblica ogni 5 secondi
+        mqtt_publish_state(thermo.getCurrentTemp(), thermo.getTarget(), thermo.isHeatingState());
+        last_mqtt_pub = millis();
+    }
 
     // 1. GESTIONE TERMOSTATO (Sensor, Logic, Heartbeat ogni 60s)
     thermo.run();

@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <WiFiUdp.h> // Necessario per Auto-Discovery
 #include <time.h>
+#include <DHT.h>
 
 class Thermostat {
 public:
@@ -15,6 +16,7 @@ public:
     void setTarget(float target);
     float getTarget();
     float getCurrentTemp();
+    float getHumidity();
     bool isHeatingState();
     float readLocalSensor();
     
@@ -36,6 +38,7 @@ public:
 
 private:
     float currentTemp = 0.0;
+    float currentHumidity = 0.0;
     float targetTemp = 20.0;
     bool isHeating = false;
     
@@ -53,6 +56,7 @@ private:
     bool sendRelayCommand(bool turnOn);
     void checkDiscovery(); 
     bool pingRelay();
+    DHT* _dht;
 };
 
 #endif

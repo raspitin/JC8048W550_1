@@ -26,4 +26,16 @@
 // --- ALTRI ---
 #define RELAY_ACTIVE_LOW true 
 
+// --- MQTT CONFIG ---
+#define MQTT_SERVER "192.168.1.140" // IP del tuo Geekom Air 12
+#define MQTT_PORT 1883
+#define MQTT_USER ""              // Lascia vuoto se non hai messo password su Mosquitto
+#define MQTT_PASS ""
+// Topic
+#define MQTT_TOPIC_STATE  "home/thermostat/state"        // heating on/off
+#define MQTT_TOPIC_TEMP   "home/thermostat/temperature"  // temp attuale
+#define MQTT_TOPIC_TARGET "home/thermostat/target"       // temp target (lettura)
+#define MQTT_TOPIC_SET    "home/thermostat/target/set"   // temp target (scrittura)
+#define MQTT_TOPIC_MODE   "home/thermostat/mode/set"     // heat/off
+
 #endif

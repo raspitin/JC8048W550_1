@@ -89,6 +89,9 @@ const char index_html[] PROGMEM = R"rawliteral(
             <div class="temp-label">Temperatura</div>
             <div class="temp-large"><span id="currTemp">--</span>&deg;</div>
             <div style="font-size: 12px; color: #888;">Target: <span id="targetTemp">--</span>&deg;</div>
+            <div style="font-size: 16px; color: #27ae60; font-weight: bold; margin-bottom: 5px;">
+        💧 <span id="currHum">--</span>%
+    </div>
         </div>
         <div class="status-right">
              <span id="relayStatus" class="badge badge-off">OFF</span>
@@ -192,6 +195,7 @@ let currentScheduleBuffer = {h:0, l:0}; // Buffer temporaneo per salvataggio
 function fetchStatus() {
   fetch('/api/status').then(r => r.json()).then(d => {
     document.getElementById('currTemp').innerText = d.temp.toFixed(1);
+    document.getElementById('currHum').innerText = d.humidity.toFixed(0);
     document.getElementById('targetTemp').innerText = d.target.toFixed(1);
     const rStat = document.getElementById('relayStatus');
     const rMsg = document.getElementById('relayMsg');
@@ -395,6 +399,7 @@ void handleRoot(AsyncWebServerRequest *request) { request->send(200, "text/html"
 void handleGetStatus(AsyncWebServerRequest *request) {
     String json = "{";
     json += "\"temp\":" + String(thermo.getCurrentTemp()) + ",";
+    json += "\"humidity\":" + String(thermo.getHumidity()) + ",";
     json += "\"target\":" + String(thermo.getTarget()) + ",";
     json += "\"heating\":" + String(thermo.isHeatingState() ? "true" : "false") + ",";
     json += "\"boostActive\":" + String(thermo.isBoostActive() ? "true" : "false") + ",";

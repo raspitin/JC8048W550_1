@@ -653,6 +653,9 @@ void build_scr_main() {
     lv_obj_set_style_bg_opa(col_left, 0, 0); lv_obj_set_style_border_width(col_left, 0, 0);
     lv_obj_set_style_pad_all(col_left, 0, 0); lv_obj_align(col_left, LV_ALIGN_LEFT_MID, 0, 0);
 
+    // *** MODIFICA 1: Rimuovi scroll dalla colonna sinistra ***
+    lv_obj_remove_flag(col_left, LV_OBJ_FLAG_SCROLLABLE);
+
     lv_obj_t *cont_clock = lv_obj_create(col_left); lv_obj_set_size(cont_clock, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
     lv_obj_set_layout(cont_clock, LV_LAYOUT_FLEX); lv_obj_set_flex_flow(cont_clock, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(cont_clock, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -699,6 +702,9 @@ void build_scr_main() {
     lv_obj_t *bot_section = lv_obj_create(col_left); lv_obj_set_size(bot_section, 630, 100); 
     lv_obj_set_style_bg_opa(bot_section, 0, 0); lv_obj_set_style_border_width(bot_section, 0, 0);
     lv_obj_align(bot_section, LV_ALIGN_BOTTOM_LEFT, 10, -10);
+
+    // *** MODIFICA 2: Rimuovi scroll dalla sezione pulsante ***
+    lv_obj_remove_flag(bot_section, LV_OBJ_FLAG_SCROLLABLE);
     
     btn_boost = lv_button_create(bot_section);
     lv_obj_set_size(btn_boost, 250, 70);
@@ -717,6 +723,11 @@ void build_scr_main() {
     lv_obj_set_style_border_side(col_right, LV_BORDER_SIDE_LEFT, 0); lv_obj_set_style_border_color(col_right, lv_color_hex(0x333333), 0);
     lv_obj_set_style_border_width(col_right, 2, 0); lv_obj_set_style_radius(col_right, 0, 0);
     lv_obj_align(col_right, LV_ALIGN_RIGHT_MID, 0, 0);
+
+    // *** MODIFICA 3: Rimuovi scroll dal menu laterale ***
+    lv_obj_remove_flag(col_right, LV_OBJ_FLAG_SCROLLABLE);
+    
+    lv_obj_set_flex_flow(col_right, LV_FLEX_FLOW_COLUMN);
     
     lv_obj_set_flex_flow(col_right, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(col_right, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);

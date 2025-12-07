@@ -10,6 +10,8 @@
 #define SENSOR_READ_INTERVAL 5000 
 #define RELAY_TIMEOUT_MS 15000 
 #define HEARTBEAT_INTERVAL (60 * 1000)
+#define DHT_PIN 17      // <--- DEFINISCI IL PIN
+#define DHT_TYPE DHT11  // <--- DEFINISCI IL TIPO (DHT11 o DHT22)
 
 Thermostat::Thermostat() {
     #ifdef RELAY_PIN
@@ -20,6 +22,10 @@ Thermostat::Thermostat() {
     #endif
     // IP di default finché non viene scoperto
     _relayIP.fromString(DEFAULT_REMOTE_RELAY_IP);
+
+    // Inizializza sensore
+    _dht = new DHT(DHT_PIN, DHT_TYPE);
+    _dht->begin();
 }
 
 void Thermostat::setup() {
@@ -224,9 +230,26 @@ float Thermostat::getCurrentTemp() { return currentTemp; }
 bool Thermostat::isHeatingState() { return isHeating; }
 
 float Thermostat::readLocalSensor() {
-    static float simTemp = 19.0;
-    if(isHeating) simTemp += 0.005; else simTemp -= 0.005;
-    if (simTemp > 24) simTemp = 24;
-    if (simTemp < 15) simTemp = 15;
-    return simTemp;
+    // Leggi temperatura e umidità 
+    float t = _dht->readTemperature();
+    float h = _dht->readHumidity();
+
+    // Check se la lettura è fallita (NaN)
+    if (isnan(t) || isnan(t)) {
+        Serial.println("Errore lettura DHT!");
+        // Ritorna l'ultimo valore valido o un valore di errore, 
+        // per ora manteniamo la logica 'safe' ritornando la vecchia currentTemp
+        return this->currentTemp; 
+    }
+    this->currentHumidity = h;
+
+    // Correzione offset (opzionale, il display scalda!)
+    // t = t - 2.0; 
+    
+    Serial.printf("DHT -> Temp: %.1f°C | Hum: %.1f%%\n", t, h);
+    return t;
 }
+// Implementazione del getter
+float Thermostat::getHumidity() {
+    return this->currentHumidity;
+    }
