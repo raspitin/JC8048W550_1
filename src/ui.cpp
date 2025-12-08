@@ -22,7 +22,7 @@ lv_obj_t *ui_lbl_hour = NULL;
 lv_obj_t *ui_lbl_min = NULL;
 lv_obj_t *ui_lbl_dots = NULL;
 
-// Info Interno
+// Info Interno (Accanto all'orologio)
 lv_obj_t *ui_lbl_temp_icon = NULL;
 lv_obj_t *ui_lbl_temp_val = NULL;
 lv_obj_t *ui_lbl_hum_icon = NULL;
@@ -30,7 +30,7 @@ lv_obj_t *ui_lbl_hum_val = NULL;
 
 lv_obj_t *lbl_date;         
 
-// --- NUOVI WIDGET METEO (2 GIORNI) ---
+// --- WIDGET METEO (2 GIORNI) ---
 lv_obj_t *cont_weather_today_icon = NULL;
 lv_obj_t *lbl_weather_today_val = NULL;
 lv_obj_t *cont_weather_tmrw_icon = NULL;
@@ -78,6 +78,8 @@ void get_time_string_from_slot(int slot, char* buf);
 void show_relay_error_popup();
 void load_impegni_to_ui(); 
 
+// --- CALLBACKS GENERALI ---
+
 static void error_popup_close_cb(lv_event_t * e) {
     lv_obj_t * win = (lv_obj_t *)lv_event_get_user_data(e);
     lv_obj_delete(win);
@@ -115,6 +117,8 @@ void show_relay_error_popup() {
     lv_obj_set_style_text_color(l_btn, lv_color_hex(0xFFFFFF), 0);
     lv_obj_center(l_btn);
 }
+
+// --- CALLBACKS BOOST ---
 
 static void boost_plus_cb(lv_event_t * e) {
     boost_minutes_selection += 30;
@@ -205,13 +209,16 @@ static void btn_boost_click_cb(lv_event_t * e) {
         return;
     }
 
-    if(thermo.isBoostActive()) {
-        bool ok = thermo.stopBoost(); 
-        if(!ok) show_relay_error_popup();
+    // Se sta scaldando (per boost o programma), il tasto serve a spegnere/override
+    if(thermo.isHeatingState()) {
+        thermo.toggleOverride();
     } else {
+        // Se è spento, apre il popup per il Boost
         create_boost_popup(); 
     }
 }
+
+// --- HELPER FUNCS ---
 
 void get_time_string_from_slot(int slot, char* buf) {
     if(slot > 48) slot = 48;
@@ -715,7 +722,7 @@ void build_scr_main() {
     lv_obj_set_size(cont_weather_section, 600, 160); // Aumentata altezza per 2 righe
     lv_obj_set_style_bg_opa(cont_weather_section, 0, 0); 
     lv_obj_set_style_border_width(cont_weather_section, 0, 0);
-    lv_obj_align(cont_weather_section, LV_ALIGN_TOP_LEFT, 20, 200); // MODIFICA: Y=200 per spostare in basso
+    lv_obj_align(cont_weather_section, LV_ALIGN_TOP_LEFT, 20, 200); // Spostato un po' su
     lv_obj_set_flex_flow(cont_weather_section, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(cont_weather_section, 10, 0); // Spazio tra le righe
     lv_obj_remove_flag(cont_weather_section, LV_OBJ_FLAG_SCROLLABLE);
@@ -733,7 +740,8 @@ void build_scr_main() {
     lv_obj_t *lbl_today = lv_label_create(row_today);
     lv_obj_set_style_text_font(lbl_today, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(lbl_today, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_width(lbl_today, 85);
+    lv_obj_set_width(lbl_today, 120); // AUMENTATO DA 80 A 120
+    lv_obj_set_style_text_align(lbl_today, LV_TEXT_ALIGN_LEFT, 0); // ALLINEATO A SX
     lv_label_set_text(lbl_today, "Oggi:");
 
     cont_weather_today_icon = lv_obj_create(row_today);
@@ -759,7 +767,8 @@ void build_scr_main() {
     lv_obj_t *lbl_tmrw = lv_label_create(row_tmrw);
     lv_obj_set_style_text_font(lbl_tmrw, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(lbl_tmrw, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_width(lbl_tmrw, 85);
+    lv_obj_set_width(lbl_tmrw, 120); // AUMENTATO DA 80 A 120
+    lv_obj_set_style_text_align(lbl_tmrw, LV_TEXT_ALIGN_LEFT, 0); // ALLINEATO A SX
     lv_label_set_text(lbl_tmrw, "Domani:");
 
     cont_weather_tmrw_icon = lv_obj_create(row_tmrw);
@@ -883,8 +892,14 @@ void update_ui() {
             int min = rem / 60;
             lv_label_set_text_fmt(lbl_boost_status, "Che caldo!!!\n-%d min", min);
         } 
+        else if (thermo.isHeatingState()) {
+            // RISCALDAMENTO PROGRAMMATO ATTIVO -> ROSSO
+            lv_obj_set_style_bg_color(btn_boost, lv_color_hex(0xC0392B), 0); // Rosso
+            lv_label_set_text(lbl_boost_status, "Che caldo...\n(Spegni)");
+        }
         else {
-            // STANDBY -> BLU
+            // STANDBY (o SPENTO MANUALMENTE) -> BLU
+            // Il comportamento è identico: se clicchi, ti apre il popup per accendere.
             lv_obj_set_style_bg_color(btn_boost, lv_color_hex(0x3498DB), 0); 
             lv_label_set_text(lbl_boost_status, "Brr che freddo!!!");
         }

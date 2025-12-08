@@ -2,15 +2,15 @@
 #define THERMOSTAT_H
 
 #include <Arduino.h>
-#include <WiFiUdp.h> // Necessario per Auto-Discovery
+#include <WiFiUdp.h> 
 #include <time.h>
 #include <DHT.h>
 
 class Thermostat {
 public:
     Thermostat();
-    void setup(); // Inizializza UDP
-    void run();   // Loop principale
+    void setup(); 
+    void run();   
 
     void update(float currentTemp);
     void setTarget(float target);
@@ -20,18 +20,21 @@ public:
     bool isHeatingState();
     float readLocalSensor();
     
-    // Boost
+    // Boost & Manuale
     bool startBoost(int minutes);
     bool stopBoost();
     bool isBoostActive();
     long getBoostRemainingSeconds();
+    
+    // Toggle Override
+    void toggleOverride(); 
+    bool isOverrideActive();
 
-    // Manuale
+    // Manuale diretto
     bool startHeating();
     bool stopHeating();
 
     // Heartbeat & Stato
-    // Il parametro 'force' permette di controllare subito senza aspettare il timer
     void checkHeartbeat(bool force = false);
     bool isRelayOnline(); 
     String getRelayIP();
@@ -39,19 +42,26 @@ public:
 private:
     float currentTemp = 0.0;
     float currentHumidity = 0.0;
-    float targetTemp = 20.0;
+    float targetTemp = 19.0;
     bool isHeating = false;
     
     bool _boostActive = false;
     time_t _boostEndTime = 0;
+    
+    bool _manualOverride = false; 
+    int _lastScheduleSlot = -1; 
 
     // Gestione Rete
     WiFiUDP _discoveryUdp;
-    IPAddress _relayIP;     // L'IP scoperto dinamicamente
-    bool _relayOnline = false; // Default false finché non lo trova
+    IPAddress _relayIP;     
+    bool _relayOnline = false; 
+    
+    // TIMERS
     unsigned long _lastPacketTime = 0;
     unsigned long _lastSensorRead = 0; 
+    unsigned long _lastControlTime = 0; // <--- NUOVO: Timer per logica lenta
     unsigned long _lastHeartbeatTime = 0;
+    bool _firstRun = true;              // <--- NUOVO: Per forzare il primo controllo
 
     bool sendRelayCommand(bool turnOn);
     void checkDiscovery(); 

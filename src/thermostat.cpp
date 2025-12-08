@@ -7,11 +7,12 @@
 #include "config_manager.h"
 #include <time.h>
 
-#define SENSOR_READ_INTERVAL 5000 
+#define SENSOR_READ_INTERVAL 5000       // Lettura sensore ogni 5s (Data Logging)
+#define CONTROL_CHECK_INTERVAL (15 * 60 * 1000) // Logica termostato ogni 15 min
 #define RELAY_TIMEOUT_MS 15000 
 #define HEARTBEAT_INTERVAL (60 * 1000)
-#define DHT_PIN 17      // <--- DEFINISCI IL PIN
-#define DHT_TYPE DHT11  // <--- DEFINISCI IL TIPO (DHT11 o DHT22)
+#define DHT_PIN 17      
+#define DHT_TYPE DHT11  
 
 Thermostat::Thermostat() {
     #ifdef RELAY_PIN
@@ -20,10 +21,7 @@ Thermostat::Thermostat() {
         digitalWrite(RELAY_PIN, RELAY_ACTIVE_LOW ? HIGH : LOW);
     }
     #endif
-    // IP di default finché non viene scoperto
     _relayIP.fromString(DEFAULT_REMOTE_RELAY_IP);
-
-    // Inizializza sensore
     _dht = new DHT(DHT_PIN, DHT_TYPE);
     _dht->begin();
 }
@@ -57,10 +55,8 @@ void Thermostat::checkDiscovery() {
     }
 }
 
-// Implementazione checkHeartbeat con parametro force
 void Thermostat::checkHeartbeat(bool force) {
     unsigned long now = millis();
-    // Se forzato o scaduto timer, prova anche un ping HTTP per certezza
     if (force || (now - _lastHeartbeatTime > HEARTBEAT_INTERVAL)) {
         pingRelay();
         _lastHeartbeatTime = now;
@@ -69,10 +65,7 @@ void Thermostat::checkHeartbeat(bool force) {
 
 bool Thermostat::pingRelay() {
     if (WiFi.status() != WL_CONNECTED) return false;
-    
-    // Usa l'IP scoperto o quello di default
     String ip = _relayOnline ? _relayIP.toString() : String(DEFAULT_REMOTE_RELAY_IP);
-    
     HTTPClient http;
     String url = String("http://") + ip + "/status";
     http.setTimeout(1500);
@@ -85,8 +78,7 @@ bool Thermostat::pingRelay() {
     
     if (alive) {
         _relayOnline = true;
-        _lastPacketTime = millis(); // Resetta anche il timeout UDP se risponde via HTTP
-        Serial.println("Heartbeat HTTP: OK");
+        _lastPacketTime = millis(); 
     }
     return alive;
 }
@@ -105,7 +97,6 @@ bool Thermostat::sendRelayCommand(bool turnOn) {
 
     if (WiFi.status() == WL_CONNECTED) {
         String ip = _relayOnline ? _relayIP.toString() : String(DEFAULT_REMOTE_RELAY_IP);
-        
         HTTPClient http;
         time_t now; time(&now);
         struct tm *timeinfo = localtime(&now);
@@ -134,13 +125,27 @@ void Thermostat::run() {
     }
 
     unsigned long now = millis();
+
+    // 1. LETTURA SENSORI AD ALTA FREQUENZA (ogni 5 sec)
+    // Questo serve per avere dati freschi sulla UI e per il futuro InfluxDB
     if (now - _lastSensorRead > SENSOR_READ_INTERVAL) {
         float t = readLocalSensor();
-        update(t); 
+        this->currentTemp = t; // Aggiorno lo stato interno
         _lastSensorRead = now;
+
+        // TODO: Qui inseriremo la chiamata a InfluxDB: writeToInflux(t, currentHumidity);
     }
     
-    // Heartbeat periodico
+    // 2. LOGICA TERMOSTATO A BASSA FREQUENZA (ogni 15 min)
+    // Evita di stressare la caldaia. Esegue check orari e isteresi.
+    // Viene eseguito immediatamente al primo avvio (_firstRun).
+    if (_firstRun || (now - _lastControlTime > CONTROL_CHECK_INTERVAL)) {
+        update(this->currentTemp); 
+        _lastControlTime = now;
+        _firstRun = false;
+        // Serial.println("Controllo Termostato (Ciclo 15min) eseguito.");
+    }
+    
     checkHeartbeat(false);
 }
 
@@ -150,7 +155,6 @@ String Thermostat::getRelayIP() { return _relayIP.toString(); }
 bool Thermostat::startHeating() {
     if (sendRelayCommand(true)) {
         isHeating = true;
-        Serial.println(">>> CALDAIA ON <<<");
         return true;
     }
     return false;
@@ -159,29 +163,30 @@ bool Thermostat::startHeating() {
 bool Thermostat::stopHeating() {
     if (sendRelayCommand(false)) {
         isHeating = false;
-        Serial.println(">>> CALDAIA OFF <<<");
         return true;
     }
     return false;
 }
 
+// --- LOGICA BOOST ---
 bool Thermostat::startBoost(int minutes) {
-    if (startHeating()) {
-        time_t now; time(&now);
-        _boostEndTime = now + (minutes * 60);
-        _boostActive = true;
-        targetTemp = TARGET_HEAT_ON; 
-        return true;
-    }
-    _boostActive = false;
-    return false;
+    _manualOverride = false;
+    time_t now; time(&now);
+    _boostEndTime = now + (minutes * 60);
+    _boostActive = true;
+    targetTemp = TARGET_HEAT_ON; 
+    
+    // IMPORTANTE: Le azioni manuali (Boost, Override, SetTarget) devono
+    // scavalcare il timer di 15 minuti e agire subito.
+    update(currentTemp); 
+    return true;
 }
 
 bool Thermostat::stopBoost() {
     _boostActive = false;
     _boostEndTime = 0;
-    update(currentTemp); 
-    return isRelayOnline();
+    update(currentTemp); // Aggiornamento immediato
+    return true;
 }
 
 bool Thermostat::isBoostActive() {
@@ -200,56 +205,84 @@ long Thermostat::getBoostRemainingSeconds() {
     return (_boostEndTime - now);
 }
 
+// --- LOGICA OVERRIDE (CHE CALDO) ---
+void Thermostat::toggleOverride() {
+    if (isBoostActive()) {
+        stopBoost();
+        return;
+    }
+    _manualOverride = !_manualOverride;
+    update(currentTemp); // Aggiornamento immediato
+}
+
+bool Thermostat::isOverrideActive() {
+    return _manualOverride;
+}
+
+// --- CUORE LOGICA TERMOSTATO ---
 void Thermostat::update(float currentTemp) {
     this->currentTemp = currentTemp;
     time_t now; time(&now);
     struct tm *timeinfo = localtime(&now);
 
     if (timeinfo->tm_year + 1900 < 2023) {
-        if (isHeating && !isBoostActive()) stopHeating();
+        if (isHeating) stopHeating();
         return; 
     }
 
     int day = timeinfo->tm_wday; 
     int slotIndex = timeinfo->tm_hour * 2 + (timeinfo->tm_min >= 30 ? 1 : 0);
-    bool scheduleActive = (configManager.data.weekSchedule[day].timeSlots >> slotIndex) & 1ULL;
-    bool boostActive = isBoostActive();
 
-    if (scheduleActive || boostActive) {
+    bool slotChanged = (slotIndex != _lastScheduleSlot);
+    
+    if (slotChanged) {
+        _manualOverride = false; 
+        _lastScheduleSlot = slotIndex;
+        
+        bool scheduleActive = (configManager.data.weekSchedule[day].timeSlots >> slotIndex) & 1ULL;
+        if (scheduleActive) targetTemp = TARGET_HEAT_ON; 
+        else targetTemp = TARGET_HEAT_OFF; 
+    }
+
+    // 2. GESTIONE BOOST E OVERRIDE
+    if (isBoostActive()) {
         targetTemp = TARGET_HEAT_ON;
-        if (!isHeating) startHeating();
-    } else {
+    }
+    else if (_manualOverride) {
         targetTemp = TARGET_HEAT_OFF;
+    }
+
+    // 3. LOGICA DI CONTROLLO (ISTERESI)
+    if (currentTemp < (targetTemp - TEMP_HYSTERESIS)) {
+        if (!isHeating) startHeating();
+    } 
+    else if (currentTemp > (targetTemp + TEMP_HYSTERESIS)) {
         if (isHeating) stopHeating();
     }
 }
 
-void Thermostat::setTarget(float target) { this->targetTemp = target; }
+// Permette alla UI di cambiare il target temporaneamente
+void Thermostat::setTarget(float target) { 
+    this->targetTemp = target; 
+    update(this->currentTemp); // Aggiornamento immediato se cambiato da UI
+}
+
 float Thermostat::getTarget() { return targetTemp; }
 float Thermostat::getCurrentTemp() { return currentTemp; }
 bool Thermostat::isHeatingState() { return isHeating; }
 
 float Thermostat::readLocalSensor() {
-    // Leggi temperatura e umidità 
     float t = _dht->readTemperature();
     float h = _dht->readHumidity();
 
-    // Check se la lettura è fallita (NaN)
-    if (isnan(t) || isnan(t)) {
+    if (isnan(t) || isnan(h)) {
         Serial.println("Errore lettura DHT!");
-        // Ritorna l'ultimo valore valido o un valore di errore, 
-        // per ora manteniamo la logica 'safe' ritornando la vecchia currentTemp
         return this->currentTemp; 
     }
     this->currentHumidity = h;
-
-    // Correzione offset (opzionale, il display scalda!)
-    // t = t - 2.0; 
-    
-    Serial.printf("DHT -> Temp: %.1f°C | Hum: %.1f%%\n", t, h);
     return t;
 }
-// Implementazione del getter
+
 float Thermostat::getHumidity() {
     return this->currentHumidity;
-    }
+}

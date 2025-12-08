@@ -14,7 +14,7 @@
 #define DISCOVERY_PACKET_CONTENT "RELAY_HERE_V1"
 
 // --- LOGGING ---
-#define SYSLOG_SERVER "192.168.1.100" 
+#define SYSLOG_SERVER "192.168.1.140" 
 #define SYSLOG_PORT 514
 #define DEVICE_NAME "Termostato_Smart"
 
