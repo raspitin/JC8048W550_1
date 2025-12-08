@@ -99,18 +99,21 @@ void ui_show_splash() {
     lv_image_set_src(img, &logo_splash);
     lv_obj_align(img, LV_ALIGN_CENTER, 0, -50); 
 
-    // 2. TITOLO
+    // 2. TITOLO (Distanziato dal logo)
     lv_obj_t * lbl_title = lv_label_create(scr_splash);
     lv_label_set_text(lbl_title, "Cronotermostato Smart V1.0");
     lv_obj_set_style_text_font(lbl_title, &lv_font_montserrat_24, 0); 
     lv_obj_set_style_text_color(lbl_title, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_align(lbl_title, LV_ALIGN_CENTER, 0, 30);
+    // MODIFICA: Spostato da 30 a 60 per distanziarlo dal logo
+    lv_obj_align(lbl_title, LV_ALIGN_CENTER, 0, 60);
 
-    // 3. CREDITS
+    // 3. CREDITS (Font +1 e Bianco Brillante)
     lv_obj_t * lbl_credits = lv_label_create(scr_splash);
-    lv_label_set_text(lbl_credits, "Sviluppato da Andrea e IA Gemini 2025");
-    lv_obj_set_style_text_font(lbl_credits, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(lbl_credits, lv_color_hex(0x888888), 0);
+    lv_label_set_text(lbl_credits, "Sviluppato da Andrea e Gemini IA 2025");
+    // MODIFICA: Font 16 (invece di 14)
+    lv_obj_set_style_text_font(lbl_credits, &lv_font_montserrat_16, 0);
+    // MODIFICA: Colore Bianco Puro (invece di Grigio)
+    lv_obj_set_style_text_color(lbl_credits, lv_color_hex(0xFFFFFF), 0);
     lv_obj_align(lbl_credits, LV_ALIGN_BOTTOM_MID, 0, -20);
 
     // Label di stato
@@ -119,6 +122,7 @@ void ui_show_splash() {
     lv_obj_set_style_text_color(lbl_splash_status, lv_color_hex(0xE67E22), 0);
     lv_obj_align(lbl_splash_status, LV_ALIGN_BOTTOM_MID, 0, -60);
 
+    // FIX: Usa lv_screen_load per LVGL 9
     lv_screen_load(scr_splash); 
 }
 
@@ -130,7 +134,7 @@ void ui_splash_config_mode() {
     lv_obj_set_style_text_align(lbl_splash_status, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(lbl_splash_status, LV_ALIGN_BOTTOM_MID, 0, -40);
 
-    // 2. QR CODE (Corretto per LVGL 9)
+    // 2. QR CODE
     const char * qr_data = "WIFI:S:Termostato_Setup;T:nopass;;";
     
     // In LVGL 9 si crea solo l'oggetto
@@ -150,12 +154,12 @@ void ui_splash_config_mode() {
     lv_timer_handler(); 
 }
 
-// --- CALLBACK DI NAVIGAZIONE ---
+// --- CALLBACK DI NAVIGAZIONE CORRETTA ---
 static void nav_event_cb(lv_event_t * e) {
     lv_obj_t * target_screen = (lv_obj_t *)lv_event_get_user_data(e);
     if(target_screen) {
         if(target_screen == scr_impegni) load_impegni_to_ui(); 
-        // Corretto: usa lv_screen_load per LVGL 9
+        // FIX: Rimosso lv_scr_load_anim che causava l'errore "too many arguments"
         lv_screen_load(target_screen);
     }
 }
