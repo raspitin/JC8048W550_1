@@ -6,7 +6,7 @@
 
 extern Thermostat thermo;
 WiFiClient espClient;
-PubSubClient client(espClient);
+PubSubClient mqttClient(espClient); // <--- RINOMINATO DA client A mqttClient
 
 unsigned long lastReconnectAttempt = 0;
 
@@ -32,22 +32,22 @@ void callback(char* topic, byte* payload, unsigned int length) {
 }
 
 boolean reconnect() {
-    if (client.connect("ESP32Thermostat", MQTT_USER, MQTT_PASS)) {
+    if (mqttClient.connect("ESP32Thermostat", MQTT_USER, MQTT_PASS)) { // <--- mqttClient
         Serial.println("MQTT Connesso");
         // Sottoscrizione ai comandi
-        client.subscribe(MQTT_TOPIC_SET);
-        client.subscribe(MQTT_TOPIC_MODE);
+        mqttClient.subscribe(MQTT_TOPIC_SET);  // <--- mqttClient
+        mqttClient.subscribe(MQTT_TOPIC_MODE); // <--- mqttClient
     }
-    return client.connected();
+    return mqttClient.connected(); // <--- mqttClient
 }
 
 void mqtt_setup() {
-    client.setServer(MQTT_SERVER, MQTT_PORT);
-    client.setCallback(callback);
+    mqttClient.setServer(MQTT_SERVER, MQTT_PORT); // <--- mqttClient
+    mqttClient.setCallback(callback);             // <--- mqttClient
 }
 
 void mqtt_loop() {
-    if (!client.connected()) {
+    if (!mqttClient.connected()) { // <--- mqttClient
         long now = millis();
         if (now - lastReconnectAttempt > 5000) {
             lastReconnectAttempt = now;
@@ -56,17 +56,17 @@ void mqtt_loop() {
             }
         }
     } else {
-        client.loop();
+        mqttClient.loop(); // <--- mqttClient
     }
 }
 
 void mqtt_publish_state(float currentTemp, float targetTemp, bool isHeating) {
-    if (!client.connected()) return;
+    if (!mqttClient.connected()) return; // <--- mqttClient
     
-    client.publish(MQTT_TOPIC_TEMP, String(currentTemp, 1).c_str());
-    // Pubblica Umidità (Aggiungi #define MQTT_TOPIC_HUM in config.h)
-    client.publish("home/thermostat/humidity", String(thermo.getHumidity(), 0).c_str()); 
+    mqttClient.publish(MQTT_TOPIC_TEMP, String(currentTemp, 1).c_str());   // <--- mqttClient
+    // Pubblica Umidità
+    mqttClient.publish("home/thermostat/humidity", String(thermo.getHumidity(), 0).c_str()); // <--- mqttClient
     
-    client.publish(MQTT_TOPIC_TARGET, String(targetTemp, 1).c_str());
-    client.publish(MQTT_TOPIC_STATE, isHeating ? "heating" : "off");
+    mqttClient.publish(MQTT_TOPIC_TARGET, String(targetTemp, 1).c_str()); // <--- mqttClient
+    mqttClient.publish(MQTT_TOPIC_STATE, isHeating ? "heating" : "off");  // <--- mqttClient
 }

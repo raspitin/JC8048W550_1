@@ -14,6 +14,7 @@
 #include "secrets.h"
 #include "config.h"
 #include "mqtt_manager.h"
+#include "influx_manager.h" // NUOVO
 
 #define WDT_TIMEOUT 10
 
@@ -23,6 +24,10 @@ unsigned long last_weather_update = 0;
 unsigned long last_tick_millis = 0;
 unsigned long last_wifi_check = 0; 
 bool time_synced = false; 
+
+// Timer per invio dati InfluxDB
+unsigned long last_influx_system = 0;
+unsigned long last_influx_sensors = 0;
 
 WiFiUDP udpClient;
 Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_NAME, "app", LOG_KERN);
@@ -122,10 +127,17 @@ void setup() {
     if (isOnline) {
         syslog.server(SYSLOG_SERVER, SYSLOG_PORT);
         logMsg("Avvio Sistema. Heap: " + String(ESP.getFreeHeap()));
+        
         mqtt_setup(); 
+        
         configTime(0, 0, "it.pool.ntp.org", "time.nist.gov", "pool.ntp.org");
         setenv("TZ", configManager.data.timezone, 1);
         tzset();
+
+        // --- INIZIALIZZAZIONE INFLUXDB ---
+        influx.begin();
+        influx.reportEvent("system", "boot", "Device restarted");
+        // ---------------------------------
 
         logMsg("Verifica Relè...");
         thermo.checkHeartbeat(true); 
@@ -137,7 +149,6 @@ void setup() {
     }
 
     // 6. AVVIO COMPLETATO: Passa alla Home Page
-    // Nota: scr_main è visibile grazie a 'extern' in ui.h
     lv_scr_load(scr_main);
 
     Serial.println("Watchdog Start...");
@@ -150,9 +161,25 @@ void loop() {
 
     if (isOnline) {
         mqtt_loop(); 
+        
+        // --- GESTIONE INVIO DATI INFLUXDB ---
+        unsigned long now = millis();
+
+        // 1. Metriche di Sistema (ogni 60 sec)
+        if (now - last_influx_system > 60000) {
+            influx.reportSystemMetrics();
+            last_influx_system = now;
+        }
+
+        // 2. Metriche Sensori e Termostato (ogni 30 sec)
+        if (now - last_influx_sensors > 30000) {
+            influx.reportSensorMetrics(thermo.getCurrentTemp(), thermo.getHumidity(), thermo.getTarget());
+            last_influx_sensors = now;
+        }
+        // ------------------------------------
     }
 
-    // MQTT PUBLISH
+    // MQTT PUBLISH (Ogni 5 sec)
     static unsigned long last_mqtt_pub = 0;
     if (millis() - last_mqtt_pub > 5000) { 
         mqtt_publish_state(thermo.getCurrentTemp(), thermo.getTarget(), thermo.isHeatingState());

@@ -21,4 +21,9 @@ static const char* SECRET_TOKENS[60] = {
     "47e2f5ab3c9d8046", "63c9d8ef5a1b7064", "40a5d8f3c9b27e16", "5d1e8f7c9a34b206"
 };
 
+#define INFLUXDB_URL "http://192.168.1.140:8087"
+#define INFLUXDB_TOKEN "onboarding-cliWizard-token-1765236932873"
+#define INFLUXDB_ORG "home_automation"
+#define INFLUXDB_BUCKET "termostato_data"
+
 #endif
