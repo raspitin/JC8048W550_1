@@ -44,8 +44,7 @@ void fetch_weather() {
     String key = String(configManager.data.weatherKey); key.trim();
 
     HTTPClient http;
-    // MODIFICA: cnt=10 per ottenere circa 30 ore di previsioni (3h * 10 segmenti)
-    // Questo ci permette di pescare il meteo tra 24h (indice 8)
+    // 10 segmenti * 3h = 30 ore di previsione
     String url = "http://api.openweathermap.org/data/2.5/forecast?q=" + city + "," + country + "&appid=" + key + "&units=metric&lang=it&cnt=10";
 
     http.setTimeout(5000); 
@@ -56,7 +55,6 @@ void fetch_weather() {
         String payload = http.getString();
         
         StaticJsonDocument<256> filter;
-        // Il filtro array [0] in ArduinoJson si applica a TUTTI gli elementi della lista
         filter["list"][0]["main"]["temp"] = true;
         filter["list"][0]["weather"][0]["description"] = true;
         filter["list"][0]["weather"][0]["icon"] = true;
@@ -65,7 +63,7 @@ void fetch_weather() {
         DeserializationError error = deserializeJson(doc, payload, DeserializationOption::Filter(filter));
 
         if (!error) {
-            // --- DATI OGGI (Indice 0 = Adesso) ---
+            // --- DATI OGGI (Indice 0) ---
             JsonObject itemNow = doc["list"][0];
             float tempNow = itemNow["main"]["temp"];
             const char* descNow = itemNow["weather"][0]["description"];
@@ -76,18 +74,16 @@ void fetch_weather() {
             
             update_current_weather(String(tempNow, 1), dNow, String(iconNow));
 
-            // --- DATI DOMANI (Indice 8 = Tra 24 ore) ---
-            // 8 segmenti da 3 ore = 24 ore nel futuro
+            // --- DATI DOMANI (Indice 8 = +24h) ---
             if (doc["list"].size() > 8) {
                 JsonObject itemTmrw = doc["list"][8];
                 float tempTmrw = itemTmrw["main"]["temp"];
-                const char* descTmrw = itemTmrw["weather"][0]["description"]; // Extract desc
+                const char* descTmrw = itemTmrw["weather"][0]["description"];
                 const char* iconTmrw = itemTmrw["weather"][0]["icon"];
                 
                 String dTmrw = String(descTmrw); 
-                if(dTmrw.length() > 0) dTmrw[0] = toupper(dTmrw[0]); // Capitalize
+                if(dTmrw.length() > 0) dTmrw[0] = toupper(dTmrw[0]);
 
-                // Aggiorna la riga "Domani" (index 1)
                 update_forecast_item(1, "Domani", String(tempTmrw, 1), dTmrw, String(iconTmrw));
             }
 
@@ -105,11 +101,15 @@ void setup() {
     Serial.begin(115200);
     
     smartdisplay_init();
+
+    // *** CORREZIONE PUNTO 5 ***
+    // Carichiamo la configurazione PRIMA di inizializzare la UI
+    // così i grafici della programmazione trovano i dati corretti.
+    if(!configManager.begin()) Serial.println("FS Error");
+    
     ui_init_all(); 
     
     last_tick_millis = millis();
-    
-    if(!configManager.begin()) Serial.println("FS Error");
 
     isOnline = setup_network();
     
@@ -122,8 +122,8 @@ void setup() {
         tzset();
 
         logMsg("Verifica Relè...");
-        thermo.checkHeartbeat(true); // Force check
-        thermo.setup(); // Avvia ascolto UDP Discovery
+        thermo.checkHeartbeat(true); 
+        thermo.setup(); 
 
         fetch_weather();
         delay(200); 
@@ -144,15 +144,15 @@ void loop() {
 
     // MQTT PUBLISH
     static unsigned long last_mqtt_pub = 0;
-    if (millis() - last_mqtt_pub > 5000) { // Pubblica ogni 5 secondi
+    if (millis() - last_mqtt_pub > 5000) { 
         mqtt_publish_state(thermo.getCurrentTemp(), thermo.getTarget(), thermo.isHeatingState());
         last_mqtt_pub = millis();
     }
 
-    // 1. GESTIONE TERMOSTATO (Sensor, Logic, Heartbeat ogni 60s)
+    // 1. GESTIONE TERMOSTATO
     thermo.run();
 
-    // 2. GESTIONE WIFI RESILIENCE (Ogni 60 sec)
+    // 2. GESTIONE WIFI RESILIENCE
     if (millis() - last_wifi_check > 60000) {
         if (WiFi.status() != WL_CONNECTED) {
             Serial.println("WiFi perso! Tento riconnessione...");
@@ -163,8 +163,6 @@ void loop() {
                 Serial.println("WiFi Ripristinato!");
                 isOnline = true;
                 if(!time_synced) configTime(0, 0, "it.pool.ntp.org", "time.nist.gov", "pool.ntp.org");
-                
-                // Al ripristino WiFi, forziamo un controllo relè immediato
                 thermo.checkHeartbeat(true); 
             }
         }
@@ -177,7 +175,7 @@ void loop() {
     last_tick_millis = current_millis;
     lv_timer_handler();
     
-    // 4. UI UPDATE (Ogni 500ms)
+    // 4. UI UPDATE
     static unsigned long last_ui_update = 0;
     if (current_millis - last_ui_update > 500) {
         update_ui(); 
@@ -192,7 +190,7 @@ void loop() {
         last_ui_update = current_millis;
     }
 
-    // 5. METEO UPDATE (Ogni 30 minuti)
+    // 5. METEO UPDATE
     if (isOnline && (current_millis - last_weather_update > 1800000)) {
         fetch_weather();
         last_weather_update = current_millis;

@@ -8,7 +8,6 @@
 extern Thermostat thermo;
 AsyncWebServer server(80);
 
-// --- PAGINA HTML (Frontend Aggiornato con Copia Programma) ---
 const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML><html>
 <head>
@@ -63,20 +62,26 @@ const char index_html[] PROGMEM = R"rawliteral(
 
     /* SCHEDULE SECTION */
     .schedule-container { user-select: none; }
-    .slot-grid { display: grid; grid-template-columns: repeat(48, 1fr); gap: 1px; height: 50px; background: #333; padding: 2px; border-radius: 4px; margin-bottom: 5px; }
+    .slot-grid { display: grid; grid-template-columns: repeat(48, 1fr); gap: 1px; height: 50px; background: #333; padding: 2px; border-radius: 4px; margin-bottom: 5px; touch-action: none; }
     .slot { background-color: #222; cursor: pointer; }
     .slot.active { background-color: #27ae60; }
     
-    .timeline-labels { display: flex; justify-content: space-between; padding: 0 2px; margin-bottom: 15px; }
+    .timeline-labels { display: flex; justify-content: space-between; padding: 0 2px; margin-bottom: 5px; }
     .tl-label { font-size: 10px; color: #888; width: 20px; text-align: center; }
     
+    /* NUOVO: Label selezione e riepilogo orari */
+    #selectionLabel { text-align: center; font-size: 14px; color: #e67e22; height: 20px; font-weight: bold; margin-bottom: 5px; }
+    #scheduleSummary { font-size: 13px; color: #ccc; background: #252525; padding: 10px; border-radius: 5px; min-height: 20px; margin-bottom: 10px; }
+
     .btn-save { background-color: #27ae60; margin-top: 10px; }
 
     /* MODAL COPY */
     .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); }
     .modal-content { background-color: #2d2d2d; margin: 15% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 400px; border-radius: 10px; text-align: center; }
     .copy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: left; margin: 20px 0; }
-    .copy-checkbox { transform: scale(1.5); margin-right: 10px; }
+    /* Fix allineamento checkbox */
+    .copy-grid label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .copy-checkbox { transform: scale(1.3); margin: 0; width: auto; }
   </style>
 </head>
 <body>
@@ -128,6 +133,7 @@ const char index_html[] PROGMEM = R"rawliteral(
             <option value="0">Domenica</option>
           </select>
           
+          <div id="selectionLabel">Trascina per modificare</div>
           <div id="scheduleGrid" class="slot-grid"></div>
           
           <div class="timeline-labels">
@@ -140,9 +146,8 @@ const char index_html[] PROGMEM = R"rawliteral(
             <span class="tl-label">24</span>
           </div>
 
-          <div style="text-align: center; font-size: 11px; color: #666; margin-bottom: 10px;">
-            Ogni tacca = 30 minuti.
-          </div>
+          <div id="scheduleSummary">Caricamento orari...</div>
+
           <button class="btn-save" onclick="openCopyModal()">SALVA PROGRAMMA</button>
       </div>
     </div>
@@ -189,7 +194,12 @@ let impegniList = [];
 let boostValue = 30;
 let relayOnline = false;
 let isBoostRunning = false;
-let currentScheduleBuffer = {h:0, l:0}; // Buffer temporaneo per salvataggio
+let currentScheduleBuffer = {h:0, l:0}; 
+
+// Variabili per il drag
+let isDrawing = false;
+let startSlot = -1;
+let currentMode = false; // true = accendi, false = spegni
 
 // --- CORE FUNCTIONS ---
 function fetchStatus() {
@@ -252,13 +262,70 @@ function toggleBoost() {
 function initGrid() {
     const grid = document.getElementById('scheduleGrid');
     grid.innerHTML = '';
+    
+    // Gestione Drag & Drop globale sulla griglia
+    grid.onmouseleave = function() { isDrawing = false; updateSelectionLabel(-1, -1); };
+    grid.onmouseup = function() { isDrawing = false; updateSelectionLabel(-1, -1); updateScheduleText(); };
+
     for(let i=0; i<48; i++) {
         let d = document.createElement('div');
         d.className = 'slot';
         d.id = 'slot-'+i;
-        d.onmousedown = function() { this.classList.toggle('active'); };
+        d.dataset.idx = i;
+        
+        // Logica Mouse/Touch
+        d.onmousedown = function(e) {
+            e.preventDefault();
+            isDrawing = true;
+            startSlot = i;
+            // Inverti lo stato del primo slot cliccato e usa quello come target per il trascinamento
+            let isActive = this.classList.contains('active');
+            currentMode = !isActive;
+            setSlot(i, currentMode);
+            updateSelectionLabel(i, i);
+        };
+        
+        d.onmouseenter = function() {
+            if(isDrawing) {
+                // Riempi dal startSlot a questo
+                let start = Math.min(startSlot, i);
+                let end = Math.max(startSlot, i);
+                for(let k=start; k<=end; k++) {
+                    setSlot(k, currentMode);
+                }
+                updateSelectionLabel(start, end);
+            }
+        };
+
+        // Supporto Touch base
+        d.ontouchstart = d.onmousedown;
+        // (Il touch move richiede calcolo coordinate, semplificato qui con click)
+
         grid.appendChild(d);
     }
+}
+
+function setSlot(idx, state) {
+    let el = document.getElementById('slot-'+idx);
+    if(state) el.classList.add('active');
+    else el.classList.remove('active');
+}
+
+function updateSelectionLabel(start, end) {
+    let lbl = document.getElementById('selectionLabel');
+    if(start === -1) {
+        lbl.innerText = "Trascina per modificare";
+        return;
+    }
+    let t1 = slotToTime(start);
+    let t2 = slotToTime(end + 1);
+    lbl.innerText = "Selezione: " + t1 + " - " + t2;
+}
+
+function slotToTime(slot) {
+    let h = Math.floor(slot/2);
+    let m = (slot % 2) * 30;
+    return (h<10?'0':'')+h + ':' + (m<10?'0':'')+m;
 }
 
 function loadSchedule() {
@@ -276,36 +343,59 @@ function loadDaySchedule() {
     let high = slots.h; let low = slots.l; 
     for(let i=0; i<32; i++) {
         let active = (low & (1 << i)) !== 0;
-        document.getElementById('slot-'+i).className = active ? 'slot active' : 'slot';
+        setSlot(i, active);
     }
     for(let i=0; i<16; i++) {
         let active = (high & (1 << i)) !== 0;
-        document.getElementById('slot-'+(32+i)).className = active ? 'slot active' : 'slot';
+        setSlot(32+i, active);
     }
+    updateScheduleText();
+}
+
+function updateScheduleText() {
+    // Genera riepilogo testuale dalle classi 'active'
+    let summary = "";
+    let start = -1;
+    let hasIntervals = false;
+    
+    for(let i=0; i<=48; i++) {
+        let active = false;
+        if (i < 48) {
+            let el = document.getElementById('slot-'+i);
+            if (el && el.classList.contains('active')) active = true;
+        }
+
+        if (active && start === -1) {
+            start = i;
+        } else if (!active && start !== -1) {
+            if (hasIntervals) summary += ", ";
+            summary += slotToTime(start) + "-" + slotToTime(i);
+            hasIntervals = true;
+            start = -1;
+        }
+    }
+    
+    if (!hasIntervals) summary = "Nessuna fascia oraria impostata";
+    document.getElementById('scheduleSummary').innerText = summary;
 }
 
 function openCopyModal() {
-    // 1. Calcola stato corrente
     let low = 0; let high = 0;
     for(let i=0; i<32; i++) if(document.getElementById('slot-'+i).classList.contains('active')) low |= (1 << i);
     for(let i=0; i<16; i++) if(document.getElementById('slot-'+(32+i)).classList.contains('active')) high |= (1 << i);
     
-    // Salva in buffer globale
     currentScheduleBuffer = {h: high, l: low};
 
-    // 2. Salva subito il giorno corrente (Backend)
     let currentDay = parseInt(document.getElementById('daySelect').value);
     saveDayAPI(currentDay, high, low);
-    weekData[currentDay] = {h: high, l: low}; // Aggiorna cache locale
+    weekData[currentDay] = {h: high, l: low}; 
 
-    // 3. Prepara Modale: deseleziona corrente, pulisci altri
     document.querySelectorAll('.copy-checkbox').forEach(cb => {
         cb.checked = false;
-        if(parseInt(cb.value) === currentDay) cb.disabled = true; // Disabilita giorno corrente
+        if(parseInt(cb.value) === currentDay) cb.disabled = true; 
         else cb.disabled = false;
     });
 
-    // 4. Mostra Modale
     document.getElementById('copyModal').style.display = 'block';
 }
 
@@ -314,7 +404,7 @@ function confirmCopy() {
     checkboxes.forEach(cb => {
         let day = parseInt(cb.value);
         saveDayAPI(day, currentScheduleBuffer.h, currentScheduleBuffer.l);
-        weekData[day] = currentScheduleBuffer; // Aggiorna cache locale
+        weekData[day] = currentScheduleBuffer; 
     });
     closeModal();
 }
@@ -348,20 +438,30 @@ function renderImpegni() {
     }
     impegniList.forEach((imp, idx) => {
         let li = document.createElement('li');
+        // Visualizza solo la stringa salvata (che ora conterrà l'anno per il backend ma qui è solo testo)
+        // La formattazione la fa chi salva
         li.innerHTML = `<span>${imp}</span> <button class="btn-del" onclick="delImpegno(${idx})">&times;</button>`;
         ul.appendChild(li);
     });
 }
 
 function addImpegno() {
-    let d = document.getElementById('impDate').value;
+    let d = document.getElementById('impDate').value; // yyyy-mm-dd
     let t = document.getElementById('impTime').value;
     let desc = document.getElementById('impDesc').value;
     if(!d || !t || !desc) { alert("Compila tutti i campi!"); return; }
-    let parts = d.split('-');
-    let dateStr = parts[2] + "/" + parts[1];
+    
+    // Converti yyyy-mm-dd in formato gestibile
+    // Salviamo in formato: "YYYY/MM/DD HH:MM - Descrizione"
+    // Questo formato è facile da parsare in C++ per la cancellazione e l'ordinamento
+    // Nota: sostituire '-' con '/' nella data per evitare conflitti con il separatore ' - '
+    let dateStr = d.replace(/-/g, '/');
     let fullStr = `${dateStr} ${t} - ${desc}`;
+    
     impegniList.push(fullStr);
+    // Ordina per data (semplice sort stringa funziona perché YYYY/MM/DD è ordinabile)
+    impegniList.sort();
+    
     saveImpegni();
     document.getElementById('impDesc').value = '';
 }

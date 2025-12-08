@@ -345,7 +345,7 @@ void create_home_button(lv_obj_t *parent) {
 }
 
 // ============================================================================
-//  LOGICA IMPEGNI (CARICAMENTO DA FILE)
+//  LOGICA IMPEGNI (CARICAMENTO DA FILE CON FILTRO E PULIZIA)
 // ============================================================================
 
 void load_impegni_to_ui() {
@@ -361,7 +361,7 @@ void load_impegni_to_ui() {
     File file = LittleFS.open("/impegni.json", "r");
     if (!file) return;
 
-    DynamicJsonDocument doc(4096);
+    DynamicJsonDocument doc(8192); // Buffer ampio
     DeserializationError error = deserializeJson(doc, file);
     file.close();
 
@@ -371,15 +371,82 @@ void load_impegni_to_ui() {
         return;
     }
 
+    // Data odierna a mezzanotte
+    time_t now;
+    time(&now);
+    struct tm *t_now = localtime(&now);
+    
+    struct tm t_start = *t_now;
+    t_start.tm_hour = 0; t_start.tm_min = 0; t_start.tm_sec = 0;
+    time_t ts_today = mktime(&t_start);
+    
+    // Limite visualizzazione: oggi + 3 giorni completi
+    time_t ts_limit = ts_today + (3 * 24 * 3600) + 86399; 
+
     JsonArray arr = doc.as<JsonArray>();
+    DynamicJsonDocument newDoc(8192);
+    JsonArray newArr = newDoc.to<JsonArray>();
+    bool needSave = false;
+    int visibleCount = 0;
+
     for (JsonVariant v : arr) {
         String imp = v.as<String>();
-        lv_obj_t * btn = lv_list_add_btn(list_impegni, LV_SYMBOL_BULLET, imp.c_str());
-        lv_obj_set_style_text_font(btn, &lv_font_montserrat_20, 0);
-        lv_obj_set_style_bg_color(btn, lv_color_hex(0x202020), 0);
-        lv_obj_set_style_text_color(btn, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_style_border_width(btn, 0, 0);
-        lv_obj_set_style_pad_all(btn, 15, 0);
+        
+        // Formato: "YYYY/MM/DD HH:MM - Desc"
+        if (imp.length() >= 10) {
+            String datePart = imp.substring(0, 10); 
+            
+            struct tm t_imp = {0};
+            int y, m, d;
+            if (sscanf(datePart.c_str(), "%d/%d/%d", &y, &m, &d) == 3) {
+                t_imp.tm_year = y - 1900;
+                t_imp.tm_mon = m - 1;
+                t_imp.tm_mday = d;
+                t_imp.tm_hour = 12; 
+                time_t ts_imp = mktime(&t_imp);
+                
+                if (ts_imp < ts_today) {
+                    // Passato -> Cancella (non aggiungere a newArr)
+                    needSave = true;
+                    continue; 
+                } 
+                
+                // Futuro o Oggi -> Mantieni
+                newArr.add(imp);
+
+                // Se rientra nei prossimi 3 giorni, visualizza
+                if (ts_imp <= ts_limit) {
+                    char dateBuf[64];
+                    // Mostra "DD/MM HH:MM - Desc"
+                    snprintf(dateBuf, sizeof(dateBuf), "%02d/%02d %s", d, m, imp.substring(11).c_str());
+                    
+                    lv_obj_t * btn = lv_list_add_btn(list_impegni, LV_SYMBOL_BULLET, dateBuf);
+                    lv_obj_set_style_text_font(btn, &lv_font_montserrat_20, 0);
+                    lv_obj_set_style_bg_color(btn, lv_color_hex(0x202020), 0);
+                    lv_obj_set_style_text_color(btn, lv_color_hex(0xFFFFFF), 0);
+                    lv_obj_set_style_border_width(btn, 0, 0);
+                    lv_obj_set_style_pad_all(btn, 15, 0);
+                    visibleCount++;
+                }
+            } else {
+                newArr.add(imp); // Formato strano, tieni per sicurezza
+            }
+        }
+    }
+
+    if (visibleCount == 0) {
+        lv_obj_t * lbl = lv_label_create(list_impegni);
+        lv_label_set_text(lbl, "Nessun impegno imminente.");
+        lv_obj_set_style_text_color(lbl, lv_color_hex(0x888888), 0);
+        lv_obj_set_style_pad_all(lbl, 20, 0);
+    }
+
+    if (needSave) {
+        File fileW = LittleFS.open("/impegni.json", "w");
+        if (fileW) {
+            serializeJson(newDoc, fileW);
+            fileW.close();
+        }
     }
 }
 
@@ -722,7 +789,7 @@ void build_scr_main() {
     lv_obj_set_size(cont_weather_section, 600, 160); // Aumentata altezza per 2 righe
     lv_obj_set_style_bg_opa(cont_weather_section, 0, 0); 
     lv_obj_set_style_border_width(cont_weather_section, 0, 0);
-    lv_obj_align(cont_weather_section, LV_ALIGN_TOP_LEFT, 20, 200); // Spostato un po' su
+    lv_obj_align(cont_weather_section, LV_ALIGN_TOP_LEFT, 20, 200); // MODIFICA: Y=200 per spostare in basso
     lv_obj_set_flex_flow(cont_weather_section, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(cont_weather_section, 10, 0); // Spazio tra le righe
     lv_obj_remove_flag(cont_weather_section, LV_OBJ_FLAG_SCROLLABLE);
