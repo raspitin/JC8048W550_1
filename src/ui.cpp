@@ -11,18 +11,26 @@
 #include "thermostat.h"
 extern Thermostat thermo;
 
-// --- SCHERMATE ---
-lv_obj_t *scr_main;
-lv_obj_t *scr_program; 
-lv_obj_t *scr_setup;
-lv_obj_t *scr_impegni;
+// DICHIARAZIONE IMMAGINE (Assicurati che il file logo_splash.c sia in src/)
+LV_IMG_DECLARE(logo_splash);
+
+// --- OGGETTI SPLASH SCREEN ---
+lv_obj_t *scr_splash = NULL;
+lv_obj_t *lbl_splash_status = NULL;
+
+// --- SCHERMATE PRINCIPALI ---
+// Definite qui, ma accessibili ovunque grazie a ui.h (extern)
+lv_obj_t *scr_main = NULL;
+lv_obj_t *scr_program = NULL;
+lv_obj_t *scr_setup = NULL;
+lv_obj_t *scr_impegni = NULL;
 
 // --- WIDGET HOME GLOBALI ---
 lv_obj_t *ui_lbl_hour = NULL;
 lv_obj_t *ui_lbl_min = NULL;
 lv_obj_t *ui_lbl_dots = NULL;
 
-// Info Interno (Accanto all'orologio)
+// Info Interno
 lv_obj_t *ui_lbl_temp_icon = NULL;
 lv_obj_t *ui_lbl_temp_val = NULL;
 lv_obj_t *ui_lbl_hum_icon = NULL;
@@ -30,7 +38,7 @@ lv_obj_t *ui_lbl_hum_val = NULL;
 
 lv_obj_t *lbl_date;         
 
-// --- WIDGET METEO (2 GIORNI) ---
+// --- WIDGET METEO ---
 lv_obj_t *cont_weather_today_icon = NULL;
 lv_obj_t *lbl_weather_today_val = NULL;
 lv_obj_t *cont_weather_tmrw_icon = NULL;
@@ -58,7 +66,7 @@ static lv_obj_t * checkboxes[7];
 static int source_day_for_copy = 0; 
 
 // --- WIDGET IMPEGNI ---
-lv_obj_t *list_impegni; // Oggetto lista LVGL
+lv_obj_t *list_impegni; 
 
 #define TIMELINE_PAD_X 25 
 static int prev_drag_slot_idx = -1;   
@@ -77,6 +85,81 @@ void create_boost_popup();
 void get_time_string_from_slot(int slot, char* buf);
 void show_relay_error_popup();
 void load_impegni_to_ui(); 
+
+// ============================================================================
+//  SPLASH SCREEN
+// ============================================================================
+
+void ui_show_splash() {
+    scr_splash = lv_obj_create(NULL);
+    lv_obj_set_style_bg_color(scr_splash, lv_color_hex(0x000000), 0); 
+
+    // 1. LOGO CENTRALE
+    lv_obj_t * img = lv_image_create(scr_splash);
+    lv_image_set_src(img, &logo_splash);
+    lv_obj_align(img, LV_ALIGN_CENTER, 0, -50); 
+
+    // 2. TITOLO
+    lv_obj_t * lbl_title = lv_label_create(scr_splash);
+    lv_label_set_text(lbl_title, "Cronotermostato Smart V1.0");
+    lv_obj_set_style_text_font(lbl_title, &lv_font_montserrat_24, 0); 
+    lv_obj_set_style_text_color(lbl_title, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_align(lbl_title, LV_ALIGN_CENTER, 0, 30);
+
+    // 3. CREDITS
+    lv_obj_t * lbl_credits = lv_label_create(scr_splash);
+    lv_label_set_text(lbl_credits, "Sviluppato da Andrea e IA Gemini 2025");
+    lv_obj_set_style_text_font(lbl_credits, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(lbl_credits, lv_color_hex(0x888888), 0);
+    lv_obj_align(lbl_credits, LV_ALIGN_BOTTOM_MID, 0, -20);
+
+    // Label di stato
+    lbl_splash_status = lv_label_create(scr_splash);
+    lv_label_set_text(lbl_splash_status, "");
+    lv_obj_set_style_text_color(lbl_splash_status, lv_color_hex(0xE67E22), 0);
+    lv_obj_align(lbl_splash_status, LV_ALIGN_BOTTOM_MID, 0, -60);
+
+    lv_screen_load(scr_splash); 
+}
+
+void ui_splash_config_mode() {
+    if (!scr_splash) return;
+
+    // 1. Testo
+    lv_label_set_text(lbl_splash_status, "Continua con la configurazione sul\ntelefono inquadrando questo QR Code");
+    lv_obj_set_style_text_align(lbl_splash_status, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(lbl_splash_status, LV_ALIGN_BOTTOM_MID, 0, -40);
+
+    // 2. QR CODE (Corretto per LVGL 9)
+    const char * qr_data = "WIFI:S:Termostato_Setup;T:nopass;;";
+    
+    // In LVGL 9 si crea solo l'oggetto
+    lv_obj_t * qr = lv_qrcode_create(scr_splash);
+    
+    // Poi si impostano i parametri separatamente
+    lv_qrcode_set_size(qr, 140);
+    lv_qrcode_set_dark_color(qr, lv_color_hex(0x000000));
+    lv_qrcode_set_light_color(qr, lv_color_hex(0xFFFFFF));
+    
+    lv_qrcode_update(qr, qr_data, strlen(qr_data));
+    
+    lv_obj_align(qr, LV_ALIGN_CENTER, 0, 90); 
+    lv_obj_set_style_border_color(qr, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_width(qr, 4, 0);
+
+    lv_timer_handler(); 
+}
+
+// --- CALLBACK DI NAVIGAZIONE ---
+static void nav_event_cb(lv_event_t * e) {
+    lv_obj_t * target_screen = (lv_obj_t *)lv_event_get_user_data(e);
+    if(target_screen) {
+        if(target_screen == scr_impegni) load_impegni_to_ui(); 
+        // Corretto: usa lv_screen_load per LVGL 9
+        lv_screen_load(target_screen);
+    }
+}
+
 
 // --- CALLBACKS GENERALI ---
 
@@ -209,11 +292,9 @@ static void btn_boost_click_cb(lv_event_t * e) {
         return;
     }
 
-    // Se sta scaldando (per boost o programma), il tasto serve a spegnere/override
     if(thermo.isHeatingState()) {
         thermo.toggleOverride();
     } else {
-        // Se è spento, apre il popup per il Boost
         create_boost_popup(); 
     }
 }
@@ -277,37 +358,22 @@ void update_main_info_label(bool force) {
     lv_label_set_text(lbl_date, text.c_str());
 }
 
-void clear_icon(lv_obj_t *parent) { lv_obj_clean(parent); }
-lv_obj_t* draw_circle(lv_obj_t *parent, int w, int h, int x, int y, uint32_t color) {
-    lv_obj_t *c = lv_obj_create(parent); lv_obj_set_size(c, w, h); lv_obj_set_style_radius(c, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(c, lv_color_hex(color), 0); lv_obj_set_style_border_width(c, 0, 0); lv_obj_align(c, LV_ALIGN_CENTER, x, y); return c;
-}
-void draw_cloud_shape(lv_obj_t *parent, int x_offset, int y_offset, uint32_t color) {
-    draw_circle(parent, 25, 25, -12 + x_offset, 5 + y_offset, color); draw_circle(parent, 25, 25, 12 + x_offset, 5 + y_offset, color); draw_circle(parent, 35, 35, 0 + x_offset, -5 + y_offset, color);
-}
-void draw_icon_sun(lv_obj_t *parent) { clear_icon(parent); lv_obj_t *rays = lv_obj_create(parent); lv_obj_set_size(rays, 55, 55); lv_obj_set_style_radius(rays, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_opa(rays, 0, 0); lv_obj_set_style_border_color(rays, lv_color_hex(0xF1C40F), 0); lv_obj_set_style_border_width(rays, 2, 0); lv_obj_center(rays); draw_circle(parent, 35, 35, 0, 0, 0xF1C40F); }
-void draw_icon_cloud(lv_obj_t *parent) { clear_icon(parent); draw_cloud_shape(parent, 0, 0, 0xBDC3C7); }
-void draw_icon_partly_cloudy(lv_obj_t *parent) { clear_icon(parent); draw_circle(parent, 30, 30, 10, -10, 0xF1C40F); draw_cloud_shape(parent, -5, 5, 0xFFFFFF); }
-void draw_icon_rain(lv_obj_t *parent) { clear_icon(parent); for(int i=0; i<3; i++) { lv_obj_t *drop = lv_obj_create(parent); lv_obj_set_size(drop, 4, 10); lv_obj_set_style_bg_color(drop, lv_color_hex(0x3498DB), 0); lv_obj_set_style_radius(drop, 2, 0); lv_obj_set_style_border_width(drop, 0, 0); lv_obj_align(drop, LV_ALIGN_CENTER, (i*12) - 12, 15); } draw_cloud_shape(parent, 0, -5, 0x7F8C8D); }
-void draw_icon_thunder(lv_obj_t *parent) { clear_icon(parent); lv_obj_t *bolt = lv_obj_create(parent); lv_obj_set_size(bolt, 8, 25); lv_obj_set_style_bg_color(bolt, lv_color_hex(0xF1C40F), 0); lv_obj_set_style_transform_rotation(bolt, 200, 0); lv_obj_set_style_border_width(bolt, 0, 0); lv_obj_align(bolt, LV_ALIGN_CENTER, 0, 15); draw_cloud_shape(parent, 0, -5, 0x555555); }
-void draw_icon_snow(lv_obj_t *parent) { clear_icon(parent); for(int i=0; i<3; i++) { draw_circle(parent, 6, 6, (i*12) - 12, 15, 0xFFFFFF); } draw_cloud_shape(parent, 0, -5, 0xBDC3C7); }
-
 void render_weather_icon(lv_obj_t *parent, String code) {
-    if (code == "01d" || code == "01n") draw_icon_sun(parent);
-    else if (code == "02d" || code == "02n") draw_icon_partly_cloudy(parent);
-    else if (code.startsWith("09") || code.startsWith("10")) draw_icon_rain(parent);
-    else if (code.startsWith("11")) draw_icon_thunder(parent);
-    else if (code.startsWith("13")) draw_icon_snow(parent);
-    else draw_icon_cloud(parent);
-}
-
-static void nav_event_cb(lv_event_t * e) {
-    lv_obj_t * target_screen = (lv_obj_t *)lv_event_get_user_data(e);
-    if(target_screen) {
-        if(target_screen == scr_impegni) load_impegni_to_ui(); 
-        lv_scr_load_anim(target_screen, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
+    lv_obj_clean(parent);
+    // Disegna icone semplici con cerchi colorati se non hai immagini
+    if (code == "01d" || code == "01n") { // Sole
+        lv_obj_t *c = lv_obj_create(parent); lv_obj_set_size(c, 30, 30); lv_obj_set_style_radius(c, LV_RADIUS_CIRCLE, 0); 
+        lv_obj_set_style_bg_color(c, lv_color_hex(0xF1C40F), 0); lv_obj_center(c);
+    } else if (code.startsWith("09") || code.startsWith("10")) { // Pioggia
+        lv_obj_t *c = lv_obj_create(parent); lv_obj_set_size(c, 30, 30); lv_obj_set_style_radius(c, LV_RADIUS_CIRCLE, 0); 
+        lv_obj_set_style_bg_color(c, lv_color_hex(0x3498DB), 0); lv_obj_center(c);
+    } else { // Nuvole
+        lv_obj_t *c = lv_obj_create(parent); lv_obj_set_size(c, 30, 30); lv_obj_set_style_radius(c, LV_RADIUS_CIRCLE, 0); 
+        lv_obj_set_style_bg_color(c, lv_color_hex(0xBDC3C7), 0); lv_obj_center(c);
     }
 }
 
+// ... msgbox callbacks ...
 static void msgbox_close_cb(lv_event_t * e) {
     lv_obj_t * mbox = (lv_obj_t *)lv_event_get_user_data(e);
     if(mbox) lv_msgbox_close(mbox);
@@ -361,7 +427,7 @@ void load_impegni_to_ui() {
     File file = LittleFS.open("/impegni.json", "r");
     if (!file) return;
 
-    DynamicJsonDocument doc(8192); // Buffer ampio
+    DynamicJsonDocument doc(8192); 
     DeserializationError error = deserializeJson(doc, file);
     file.close();
 
@@ -371,7 +437,6 @@ void load_impegni_to_ui() {
         return;
     }
 
-    // Data odierna a mezzanotte
     time_t now;
     time(&now);
     struct tm *t_now = localtime(&now);
@@ -379,8 +444,6 @@ void load_impegni_to_ui() {
     struct tm t_start = *t_now;
     t_start.tm_hour = 0; t_start.tm_min = 0; t_start.tm_sec = 0;
     time_t ts_today = mktime(&t_start);
-    
-    // Limite visualizzazione: oggi + 3 giorni completi
     time_t ts_limit = ts_today + (3 * 24 * 3600) + 86399; 
 
     JsonArray arr = doc.as<JsonArray>();
@@ -391,11 +454,8 @@ void load_impegni_to_ui() {
 
     for (JsonVariant v : arr) {
         String imp = v.as<String>();
-        
-        // Formato: "YYYY/MM/DD HH:MM - Desc"
         if (imp.length() >= 10) {
             String datePart = imp.substring(0, 10); 
-            
             struct tm t_imp = {0};
             int y, m, d;
             if (sscanf(datePart.c_str(), "%d/%d/%d", &y, &m, &d) == 3) {
@@ -406,18 +466,14 @@ void load_impegni_to_ui() {
                 time_t ts_imp = mktime(&t_imp);
                 
                 if (ts_imp < ts_today) {
-                    // Passato -> Cancella (non aggiungere a newArr)
                     needSave = true;
                     continue; 
                 } 
                 
-                // Futuro o Oggi -> Mantieni
                 newArr.add(imp);
 
-                // Se rientra nei prossimi 3 giorni, visualizza
                 if (ts_imp <= ts_limit) {
                     char dateBuf[64];
-                    // Mostra "DD/MM HH:MM - Desc"
                     snprintf(dateBuf, sizeof(dateBuf), "%02d/%02d %s", d, m, imp.substring(11).c_str());
                     
                     lv_obj_t * btn = lv_list_add_btn(list_impegni, LV_SYMBOL_BULLET, dateBuf);
@@ -429,7 +485,7 @@ void load_impegni_to_ui() {
                     visibleCount++;
                 }
             } else {
-                newArr.add(imp); // Formato strano, tieni per sicurezza
+                newArr.add(imp); 
             }
         }
     }

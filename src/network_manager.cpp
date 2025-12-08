@@ -1,6 +1,7 @@
 #include "network_manager.h"
 #include "config_manager.h"
 #include <WiFiManager.h>
+#include "ui.h" 
 
 bool shouldSaveConfig = false;
 
@@ -32,6 +33,12 @@ bool setup_network() {
     wm.addParameter(&custom_city);
     wm.addParameter(&custom_country);
     wm.addParameter(&custom_tz);
+
+    // CALLBACK: Se non trova WiFi e apre l'AP, aggiorna la Splash Screen con QR e istruzioni
+    wm.setAPCallback([](WiFiManager *myWiFiManager) {
+        Serial.println("Modalità Configurazione AP Attiva");
+        ui_splash_config_mode(); 
+    });
 
     wm.setSaveConfigCallback(saveConfigCallback);
     wm.setDebugOutput(true);

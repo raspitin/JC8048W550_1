@@ -100,17 +100,23 @@ void fetch_weather() {
 void setup() {
     Serial.begin(115200);
     
+    // 1. Inizializza Display e LVGL
     smartdisplay_init();
 
-    // *** CORREZIONE PUNTO 5 ***
-    // Carichiamo la configurazione PRIMA di inizializzare la UI
-    // così i grafici della programmazione trovano i dati corretti.
+    // 2. Mostra subito la SPLASH SCREEN
+    ui_show_splash();
+    lv_timer_handler(); // Forza rendering immediato
+    delay(100);
+
+    // 3. Carica Configurazione (PRIMA della UI)
     if(!configManager.begin()) Serial.println("FS Error");
     
+    // 4. Inizializza il resto della UI (carica Home, Program, ecc. in memoria)
     ui_init_all(); 
     
     last_tick_millis = millis();
 
+    // 5. Configura Rete (Bloccante se non trova WiFi -> Mostra QR Code su Splash)
     isOnline = setup_network();
     
     if (isOnline) {
@@ -129,6 +135,10 @@ void setup() {
         delay(200); 
         setup_web_server();
     }
+
+    // 6. AVVIO COMPLETATO: Passa alla Home Page
+    // Nota: scr_main è visibile grazie a 'extern' in ui.h
+    lv_scr_load(scr_main);
 
     Serial.println("Watchdog Start...");
     esp_task_wdt_init(WDT_TIMEOUT, true); 
