@@ -5,8 +5,8 @@
 #include <WiFi.h>
 #include <time.h>
 #include "config.h" 
-#include <LittleFS.h>     // <--- NUOVO
-#include <ArduinoJson.h>  // <--- NUOVO
+#include <LittleFS.h>     
+#include <ArduinoJson.h>  
 
 #include "thermostat.h"
 extern Thermostat thermo;
@@ -21,10 +21,20 @@ lv_obj_t *scr_impegni;
 lv_obj_t *ui_lbl_hour = NULL;
 lv_obj_t *ui_lbl_min = NULL;
 lv_obj_t *ui_lbl_dots = NULL;
+
+// Info Interno
+lv_obj_t *ui_lbl_temp_icon = NULL;
+lv_obj_t *ui_lbl_temp_val = NULL;
+lv_obj_t *ui_lbl_hum_icon = NULL;
+lv_obj_t *ui_lbl_hum_val = NULL;
+
 lv_obj_t *lbl_date;         
-lv_obj_t *lbl_cur_temp_big; 
-lv_obj_t *lbl_cur_desc;
-lv_obj_t *cont_cur_icon;    
+
+// --- NUOVI WIDGET METEO (2 GIORNI) ---
+lv_obj_t *cont_weather_today_icon = NULL;
+lv_obj_t *lbl_weather_today_val = NULL;
+lv_obj_t *cont_weather_tmrw_icon = NULL;
+lv_obj_t *lbl_weather_tmrw_val = NULL;
 
 // Widget Setup
 lv_obj_t *lbl_setup_ssid;
@@ -66,12 +76,7 @@ void update_main_info_label(bool force);
 void create_boost_popup();
 void get_time_string_from_slot(int slot, char* buf);
 void show_relay_error_popup();
-void load_impegni_to_ui(); // Nuova funzione
-
-// ... [TUTTE LE ALTRE FUNZIONI BOOST, POPUP, TIMELINE, ECC. RIMANGONO IDENTICHE A PRIMA] ...
-// (Per brevità copio solo le parti modificate o nuove, ma tu devi incollare tutto il file completo)
-// ...
-// INCOLLO QUI LE FUNZIONI STANDARD CHE ABBIAMO GIÀ SCRITTO, PER AVERE UN FILE COMPLETO
+void load_impegni_to_ui(); 
 
 static void error_popup_close_cb(lv_event_t * e) {
     lv_obj_t * win = (lv_obj_t *)lv_event_get_user_data(e);
@@ -291,9 +296,7 @@ void render_weather_icon(lv_obj_t *parent, String code) {
 static void nav_event_cb(lv_event_t * e) {
     lv_obj_t * target_screen = (lv_obj_t *)lv_event_get_user_data(e);
     if(target_screen) {
-        // Refresh automatico della pagina quando viene caricata
         if(target_screen == scr_impegni) load_impegni_to_ui(); 
-        
         lv_scr_load_anim(target_screen, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
     }
 }
@@ -339,7 +342,6 @@ void create_home_button(lv_obj_t *parent) {
 // ============================================================================
 
 void load_impegni_to_ui() {
-    // Pulisci lista attuale
     lv_obj_clean(list_impegni);
     
     if (!LittleFS.exists("/impegni.json")) {
@@ -352,7 +354,6 @@ void load_impegni_to_ui() {
     File file = LittleFS.open("/impegni.json", "r");
     if (!file) return;
 
-    // Parsing JSON
     DynamicJsonDocument doc(4096);
     DeserializationError error = deserializeJson(doc, file);
     file.close();
@@ -366,8 +367,6 @@ void load_impegni_to_ui() {
     JsonArray arr = doc.as<JsonArray>();
     for (JsonVariant v : arr) {
         String imp = v.as<String>();
-        
-        // Crea pulsante lista
         lv_obj_t * btn = lv_list_add_btn(list_impegni, LV_SYMBOL_BULLET, imp.c_str());
         lv_obj_set_style_text_font(btn, &lv_font_montserrat_20, 0);
         lv_obj_set_style_bg_color(btn, lv_color_hex(0x202020), 0);
@@ -405,8 +404,6 @@ void refresh_intervals_display(int ui_idx) {
     lv_label_set_text(lbl_intervals[ui_idx], text.c_str());
 }
 
-// ... (TIMELINE DRAW / INPUT / LOGIC RIMANGONO UGUALI AL CODICE PRECEDENTE) ...
-// PER BREVITA' COPIO IL RESTO DELLE FUNZIONI CHE SONO GIA' OK
 static void timeline_draw_event_cb(lv_event_t * e) {
     lv_obj_t * obj = (lv_obj_t*)lv_event_get_target(e);
     int day_idx = (int)(intptr_t)lv_event_get_user_data(e);
@@ -653,7 +650,6 @@ void build_scr_main() {
     lv_obj_set_style_bg_opa(col_left, 0, 0); lv_obj_set_style_border_width(col_left, 0, 0);
     lv_obj_set_style_pad_all(col_left, 0, 0); lv_obj_align(col_left, LV_ALIGN_LEFT_MID, 0, 0);
 
-    // *** MODIFICA 1: Rimuovi scroll dalla colonna sinistra ***
     lv_obj_remove_flag(col_left, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *cont_clock = lv_obj_create(col_left); lv_obj_set_size(cont_clock, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
@@ -672,6 +668,40 @@ void build_scr_main() {
     ui_lbl_min = lv_label_create(cont_clock); lv_obj_set_style_text_font(ui_lbl_min, &lv_font_montserrat_36, 0); 
     lv_obj_set_style_text_color(ui_lbl_min, lv_color_hex(0xFFFFFF), 0); lv_label_set_text(ui_lbl_min, "00");
 
+    // --- SPAZIATORE E INFO SENSORI ---
+    lv_obj_t *spacer = lv_obj_create(cont_clock);
+    lv_obj_set_size(spacer, 20, 1);
+    lv_obj_set_style_border_width(spacer, 0, 0);
+    lv_obj_set_style_bg_opa(spacer, 0, 0);
+
+    // --- ICONA TEMPERATURA ---
+    ui_lbl_temp_icon = lv_label_create(cont_clock);
+    lv_obj_set_style_text_font(ui_lbl_temp_icon, &lv_font_montserrat_36, 0); 
+    lv_obj_set_style_text_color(ui_lbl_temp_icon, lv_color_hex(0xF1C40F), 0); 
+    lv_label_set_text(ui_lbl_temp_icon, "T");
+
+    // --- VALORE TEMPERATURA ---
+    ui_lbl_temp_val = lv_label_create(cont_clock);
+    lv_obj_set_style_text_font(ui_lbl_temp_val, &lv_font_montserrat_36, 0); 
+    lv_obj_set_style_text_color(ui_lbl_temp_val, lv_color_hex(0xFFFFFF), 0); 
+    lv_obj_set_width(ui_lbl_temp_val, 130);
+    lv_obj_set_style_text_align(ui_lbl_temp_val, LV_TEXT_ALIGN_LEFT, 0); 
+    lv_label_set_text(ui_lbl_temp_val, "--.-°C");
+
+    // --- ICONA UMIDITÀ ---
+    ui_lbl_hum_icon = lv_label_create(cont_clock);
+    lv_obj_set_style_text_font(ui_lbl_hum_icon, &lv_font_montserrat_36, 0); 
+    lv_obj_set_style_text_color(ui_lbl_hum_icon, lv_color_hex(0x3498DB), 0); 
+    lv_label_set_text(ui_lbl_hum_icon, "H");
+
+    // --- VALORE UMIDITÀ ---
+    ui_lbl_hum_val = lv_label_create(cont_clock);
+    lv_obj_set_style_text_font(ui_lbl_hum_val, &lv_font_montserrat_36, 0); 
+    lv_obj_set_style_text_color(ui_lbl_hum_val, lv_color_hex(0xFFFFFF), 0); 
+    lv_obj_set_width(ui_lbl_hum_val, 100);
+    lv_obj_set_style_text_align(ui_lbl_hum_val, LV_TEXT_ALIGN_LEFT, 0); 
+    lv_label_set_text(ui_lbl_hum_val, "--%");
+
     lbl_date = lv_label_create(col_left); 
     lv_obj_set_style_text_font(lbl_date, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(lbl_date, lv_color_hex(0xAAAAAA), 0); 
@@ -680,30 +710,73 @@ void build_scr_main() {
     lv_obj_align(lbl_date, LV_ALIGN_TOP_LEFT, 20, 70);
     lv_label_set_text(lbl_date, "In attesa di dati...");
 
-    lv_obj_t *cont_current = lv_obj_create(col_left); lv_obj_set_size(cont_current, 600, 150);
-    lv_obj_set_style_bg_opa(cont_current, 0, 0); lv_obj_set_style_border_width(cont_current, 0, 0);
-    lv_obj_align(cont_current, LV_ALIGN_TOP_LEFT, 10, 180);
-    lv_obj_set_flex_flow(cont_current, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(cont_current, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(cont_current, 20, 0);
+    // --- SEZIONE METEO A 2 GIORNI ---
+    lv_obj_t *cont_weather_section = lv_obj_create(col_left); 
+    lv_obj_set_size(cont_weather_section, 600, 160); // Aumentata altezza per 2 righe
+    lv_obj_set_style_bg_opa(cont_weather_section, 0, 0); 
+    lv_obj_set_style_border_width(cont_weather_section, 0, 0);
+    lv_obj_align(cont_weather_section, LV_ALIGN_TOP_LEFT, 20, 200); // MODIFICA: Y=200 per spostare in basso
+    lv_obj_set_flex_flow(cont_weather_section, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(cont_weather_section, 10, 0); // Spazio tra le righe
+    lv_obj_remove_flag(cont_weather_section, LV_OBJ_FLAG_SCROLLABLE);
 
-    cont_cur_icon = lv_obj_create(cont_current); lv_obj_set_size(cont_cur_icon, 100, 100);
-    lv_obj_set_style_bg_opa(cont_cur_icon, 0, 0); lv_obj_set_style_border_width(cont_cur_icon, 0, 0);
+    // RIGA OGGI
+    lv_obj_t *row_today = lv_obj_create(cont_weather_section);
+    lv_obj_set_size(row_today, 580, 60);
+    lv_obj_set_style_bg_opa(row_today, 0, 0); 
+    lv_obj_set_style_border_width(row_today, 0, 0);
+    lv_obj_set_flex_flow(row_today, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row_today, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(row_today, 10, 0);
+    lv_obj_remove_flag(row_today, LV_OBJ_FLAG_SCROLLABLE);
     
-    lbl_cur_temp_big = lv_label_create(cont_current); lv_obj_set_style_text_font(lbl_cur_temp_big, &lv_font_montserrat_36, 0);
-    lv_obj_set_style_text_color(lbl_cur_temp_big, lv_color_hex(0xF1C40F), 0); lv_label_set_text(lbl_cur_temp_big, "--°");
+    lv_obj_t *lbl_today = lv_label_create(row_today);
+    lv_obj_set_style_text_font(lbl_today, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(lbl_today, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_width(lbl_today, 85);
+    lv_label_set_text(lbl_today, "Oggi:");
 
-    lbl_cur_desc = lv_label_create(cont_current); lv_obj_set_style_text_font(lbl_cur_desc, &lv_font_montserrat_24, 0);
-    lv_obj_set_style_text_color(lbl_cur_desc, lv_color_hex(0xFFFFFF), 0); lv_obj_set_width(lbl_cur_desc, 300); 
-    lv_obj_set_style_text_align(lbl_cur_desc, LV_TEXT_ALIGN_LEFT, 0); lv_label_set_long_mode(lbl_cur_desc, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_label_set_text(lbl_cur_desc, "---");
+    cont_weather_today_icon = lv_obj_create(row_today);
+    lv_obj_set_size(cont_weather_today_icon, 60, 60);
+    lv_obj_set_style_bg_opa(cont_weather_today_icon, 0, 0);
+    lv_obj_set_style_border_width(cont_weather_today_icon, 0, 0);
+
+    lbl_weather_today_val = lv_label_create(row_today);
+    lv_obj_set_style_text_font(lbl_weather_today_val, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(lbl_weather_today_val, lv_color_hex(0xFFD700), 0);
+    lv_label_set_text(lbl_weather_today_val, "--°C");
+
+    // RIGA DOMANI
+    lv_obj_t *row_tmrw = lv_obj_create(cont_weather_section);
+    lv_obj_set_size(row_tmrw, 580, 60);
+    lv_obj_set_style_bg_opa(row_tmrw, 0, 0); 
+    lv_obj_set_style_border_width(row_tmrw, 0, 0);
+    lv_obj_set_flex_flow(row_tmrw, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row_tmrw, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(row_tmrw, 10, 0);
+    lv_obj_remove_flag(row_tmrw, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *lbl_tmrw = lv_label_create(row_tmrw);
+    lv_obj_set_style_text_font(lbl_tmrw, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(lbl_tmrw, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_width(lbl_tmrw, 85);
+    lv_label_set_text(lbl_tmrw, "Domani:");
+
+    cont_weather_tmrw_icon = lv_obj_create(row_tmrw);
+    lv_obj_set_size(cont_weather_tmrw_icon, 60, 60);
+    lv_obj_set_style_bg_opa(cont_weather_tmrw_icon, 0, 0);
+    lv_obj_set_style_border_width(cont_weather_tmrw_icon, 0, 0);
+
+    lbl_weather_tmrw_val = lv_label_create(row_tmrw);
+    lv_obj_set_style_text_font(lbl_weather_tmrw_val, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(lbl_weather_tmrw_val, lv_color_hex(0xAAAAAA), 0);
+    lv_label_set_text(lbl_weather_tmrw_val, "--°C");
 
     // Area Basso Sinistra (Pulsante BOOST)
     lv_obj_t *bot_section = lv_obj_create(col_left); lv_obj_set_size(bot_section, 630, 100); 
     lv_obj_set_style_bg_opa(bot_section, 0, 0); lv_obj_set_style_border_width(bot_section, 0, 0);
     lv_obj_align(bot_section, LV_ALIGN_BOTTOM_LEFT, 10, -10);
 
-    // *** MODIFICA 2: Rimuovi scroll dalla sezione pulsante ***
     lv_obj_remove_flag(bot_section, LV_OBJ_FLAG_SCROLLABLE);
     
     btn_boost = lv_button_create(bot_section);
@@ -724,7 +797,6 @@ void build_scr_main() {
     lv_obj_set_style_border_width(col_right, 2, 0); lv_obj_set_style_radius(col_right, 0, 0);
     lv_obj_align(col_right, LV_ALIGN_RIGHT_MID, 0, 0);
 
-    // *** MODIFICA 3: Rimuovi scroll dal menu laterale ***
     lv_obj_remove_flag(col_right, LV_OBJ_FLAG_SCROLLABLE);
     
     lv_obj_set_flex_flow(col_right, LV_FLEX_FLOW_COLUMN);
@@ -772,14 +844,19 @@ void ui_init_all() {
     lv_scr_load(scr_main);
 }
 
+// Aggiorna Meteo Oggi
 void update_current_weather(String temp, String desc, String iconCode) {
-    if(lbl_cur_temp_big) lv_label_set_text_fmt(lbl_cur_temp_big, "%s°C", temp.c_str());
-    if(lbl_cur_desc) lv_label_set_text(lbl_cur_desc, desc.c_str());
-    if(cont_cur_icon) render_weather_icon(cont_cur_icon, iconCode);
+    if(lbl_weather_today_val) lv_label_set_text_fmt(lbl_weather_today_val, "%s°C %s", temp.c_str(), desc.c_str());
+    if(cont_weather_today_icon) render_weather_icon(cont_weather_today_icon, iconCode);
 }
 
-void update_forecast_item(int index, String day, String temp, String iconCode) {
-    // Dummy
+// Aggiorna Meteo Domani
+void update_forecast_item(int index, String day, String temp, String desc, String iconCode) {
+    if (index == 1) { // 1 = Domani
+        // MODIFICA: Ora usa anche 'desc' nel formato
+        if(lbl_weather_tmrw_val) lv_label_set_text_fmt(lbl_weather_tmrw_val, "%s°C %s", temp.c_str(), desc.c_str());
+        if(cont_weather_tmrw_icon) render_weather_icon(cont_weather_tmrw_icon, iconCode);
+    }
 }
 
 void update_ui() {
@@ -810,6 +887,15 @@ void update_ui() {
             // STANDBY -> BLU
             lv_obj_set_style_bg_color(btn_boost, lv_color_hex(0x3498DB), 0); 
             lv_label_set_text(lbl_boost_status, "Brr che freddo!!!");
+        }
+
+        // --- Aggiornamento info sensore interno ---
+        if(ui_lbl_temp_val) {
+            float t = thermo.getCurrentTemp();
+            float h = thermo.getHumidity();
+            // Aggiorna solo i valori, le icone sono statiche
+            lv_label_set_text_fmt(ui_lbl_temp_val, "%.1f°C", t);
+            lv_label_set_text_fmt(ui_lbl_hum_val, "%.0f%%", h);
         }
         
         update_main_info_label(false);

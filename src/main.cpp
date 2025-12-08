@@ -44,7 +44,9 @@ void fetch_weather() {
     String key = String(configManager.data.weatherKey); key.trim();
 
     HTTPClient http;
-    String url = "http://api.openweathermap.org/data/2.5/forecast?q=" + city + "," + country + "&appid=" + key + "&units=metric&lang=it&cnt=2";
+    // MODIFICA: cnt=10 per ottenere circa 30 ore di previsioni (3h * 10 segmenti)
+    // Questo ci permette di pescare il meteo tra 24h (indice 8)
+    String url = "http://api.openweathermap.org/data/2.5/forecast?q=" + city + "," + country + "&appid=" + key + "&units=metric&lang=it&cnt=10";
 
     http.setTimeout(5000); 
     http.begin(url);
@@ -54,6 +56,7 @@ void fetch_weather() {
         String payload = http.getString();
         
         StaticJsonDocument<256> filter;
+        // Il filtro array [0] in ArduinoJson si applica a TUTTI gli elementi della lista
         filter["list"][0]["main"]["temp"] = true;
         filter["list"][0]["weather"][0]["description"] = true;
         filter["list"][0]["weather"][0]["icon"] = true;
@@ -62,13 +65,32 @@ void fetch_weather() {
         DeserializationError error = deserializeJson(doc, payload, DeserializationOption::Filter(filter));
 
         if (!error) {
-            JsonObject item = doc["list"][0];
-            float temp = item["main"]["temp"];
-            const char* desc = item["weather"][0]["description"];
-            const char* icon = item["weather"][0]["icon"];
-            String d = String(desc); 
-            if(d.length() > 0) d[0] = toupper(d[0]);
-            update_current_weather(String(temp, 1), d, String(icon));
+            // --- DATI OGGI (Indice 0 = Adesso) ---
+            JsonObject itemNow = doc["list"][0];
+            float tempNow = itemNow["main"]["temp"];
+            const char* descNow = itemNow["weather"][0]["description"];
+            const char* iconNow = itemNow["weather"][0]["icon"];
+            
+            String dNow = String(descNow); 
+            if(dNow.length() > 0) dNow[0] = toupper(dNow[0]);
+            
+            update_current_weather(String(tempNow, 1), dNow, String(iconNow));
+
+            // --- DATI DOMANI (Indice 8 = Tra 24 ore) ---
+            // 8 segmenti da 3 ore = 24 ore nel futuro
+            if (doc["list"].size() > 8) {
+                JsonObject itemTmrw = doc["list"][8];
+                float tempTmrw = itemTmrw["main"]["temp"];
+                const char* descTmrw = itemTmrw["weather"][0]["description"]; // Extract desc
+                const char* iconTmrw = itemTmrw["weather"][0]["icon"];
+                
+                String dTmrw = String(descTmrw); 
+                if(dTmrw.length() > 0) dTmrw[0] = toupper(dTmrw[0]); // Capitalize
+
+                // Aggiorna la riga "Domani" (index 1)
+                update_forecast_item(1, "Domani", String(tempTmrw, 1), dTmrw, String(iconTmrw));
+            }
+
             logMsg("Meteo OK.");
         } else {
             logMsg("JSON Error: " + String(error.c_str()), LOG_ERR);
@@ -94,16 +116,14 @@ void setup() {
     if (isOnline) {
         syslog.server(SYSLOG_SERVER, SYSLOG_PORT);
         logMsg("Avvio Sistema. Heap: " + String(ESP.getFreeHeap()));
-        mqtt_setup(); // <--- Avvia MQTT
+        mqtt_setup(); 
         configTime(0, 0, "it.pool.ntp.org", "time.nist.gov", "pool.ntp.org");
         setenv("TZ", configManager.data.timezone, 1);
         tzset();
 
-        // NUOVO: Controllo immediato stato relè all'avvio
         logMsg("Verifica Relè...");
         thermo.checkHeartbeat(true); // Force check
-        // NUOVO: Avvia ascolto UDP Discovery
-        thermo.setup();
+        thermo.setup(); // Avvia ascolto UDP Discovery
 
         fetch_weather();
         delay(200); 
@@ -119,11 +139,10 @@ void loop() {
     esp_task_wdt_reset();
 
     if (isOnline) {
-        mqtt_loop(); // <--- Mantieni vivo MQTT
+        mqtt_loop(); 
     }
 
-    // 4. UI UPDATE
-    // ... all'interno del timer 500ms o più lento (es. ogni 5 sec per MQTT) ...
+    // MQTT PUBLISH
     static unsigned long last_mqtt_pub = 0;
     if (millis() - last_mqtt_pub > 5000) { // Pubblica ogni 5 secondi
         mqtt_publish_state(thermo.getCurrentTemp(), thermo.getTarget(), thermo.isHeatingState());
@@ -173,7 +192,7 @@ void loop() {
         last_ui_update = current_millis;
     }
 
-    // 5. METEO UPDATE
+    // 5. METEO UPDATE (Ogni 30 minuti)
     if (isOnline && (current_millis - last_weather_update > 1800000)) {
         fetch_weather();
         last_weather_update = current_millis;
