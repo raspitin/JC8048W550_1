@@ -11,15 +11,15 @@
 #include "thermostat.h"
 extern Thermostat thermo;
 
-// DICHIARAZIONE IMMAGINE (Assicurati che il file logo_splash.c sia in src/)
+// DICHIARAZIONE IMMAGINI
 LV_IMG_DECLARE(logo_splash);
+LV_IMG_DECLARE(qr_code); 
 
 // --- OGGETTI SPLASH SCREEN ---
 lv_obj_t *scr_splash = NULL;
 lv_obj_t *lbl_splash_status = NULL;
 
 // --- SCHERMATE PRINCIPALI ---
-// Definite qui, ma accessibili ovunque grazie a ui.h (extern)
 lv_obj_t *scr_main = NULL;
 lv_obj_t *scr_program = NULL;
 lv_obj_t *scr_setup = NULL;
@@ -94,78 +94,87 @@ void ui_show_splash() {
     scr_splash = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(scr_splash, lv_color_hex(0x000000), 0); 
 
-    // 1. LOGO CENTRALE
-    lv_obj_t * img = lv_image_create(scr_splash);
-    lv_image_set_src(img, &logo_splash);
-    lv_obj_align(img, LV_ALIGN_CENTER, 0, -50); 
+    // --- SEZIONE SINISTRA: LOGO E TITOLO ---
+    lv_obj_t * img_logo = lv_image_create(scr_splash);
+    lv_image_set_src(img_logo, &logo_splash);
+    lv_obj_align(img_logo, LV_ALIGN_LEFT_MID, 100, -40); 
 
-    // 2. TITOLO (Distanziato dal logo)
     lv_obj_t * lbl_title = lv_label_create(scr_splash);
-    lv_label_set_text(lbl_title, "Cronotermostato Smart V1.0");
+    lv_label_set_text(lbl_title, "Cronotermostato\nSmart V1.0");
+    lv_obj_set_style_text_align(lbl_title, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(lbl_title, &lv_font_montserrat_24, 0); 
     lv_obj_set_style_text_color(lbl_title, lv_color_hex(0xFFFFFF), 0);
-    // MODIFICA: Spostato da 30 a 60 per distanziarlo dal logo
-    lv_obj_align(lbl_title, LV_ALIGN_CENTER, 0, 60);
+    lv_obj_align_to(lbl_title, img_logo, LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
 
-    // 3. CREDITS (Font +1 e Bianco Brillante)
+    // --- SEZIONE DESTRA: QR CODE E GUIDA CONNESSIONE ---
+
+    // 1. QR CODE (Spostato in alto per fare spazio)
+    lv_obj_t * img_qr = lv_image_create(scr_splash);
+    lv_image_set_src(img_qr, &qr_code);
+    
+    lv_image_set_scale(img_qr, 128); // 50%
+    
+    // Y = -90 sposta il QR verso l'alto rispetto al centro
+    lv_obj_align(img_qr, LV_ALIGN_RIGHT_MID, -100, -90);
+    
+    lv_obj_set_style_border_color(img_qr, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_width(img_qr, 4, 0);
+    lv_obj_set_style_radius(img_qr, 8, 0);
+
+    // 2. GUIDA SINTETICA (Sotto il QR)
+    lv_obj_t * lbl_instr = lv_label_create(scr_splash);
+    // Uso testo con colori (se abilitato in LV_CONF) o semplice formattazione
+    lv_label_set_text(lbl_instr, 
+        "1. Connettiti a: Termostato_Setup\n"
+        "   Password: Andrea6T0P\n\n"
+        "2. Se la pagina non si apre:\n"
+        "   - Disattiva i Dati Mobili\n"
+        "   - Vai su http://192.168.4.1"
+    );
+    
+    lv_obj_set_style_text_align(lbl_instr, LV_TEXT_ALIGN_LEFT, 0); // Allineato a SX per la lista
+    lv_obj_set_style_text_font(lbl_instr, &lv_font_montserrat_14, 0); // Font leggermente più piccolo per farci stare tutto
+    lv_obj_set_style_text_color(lbl_instr, lv_color_hex(0xFFFFFF), 0);
+    
+    // Posizionato sotto il QR con un po' di margine
+    lv_obj_align_to(lbl_instr, img_qr, LV_ALIGN_OUT_BOTTOM_MID, 0, 15);
+
+    // --- CREDITS ---
     lv_obj_t * lbl_credits = lv_label_create(scr_splash);
     lv_label_set_text(lbl_credits, "Sviluppato da Andrea e Gemini IA 2025");
-    // MODIFICA: Font 16 (invece di 14)
     lv_obj_set_style_text_font(lbl_credits, &lv_font_montserrat_16, 0);
-    // MODIFICA: Colore Bianco Puro (invece di Grigio)
     lv_obj_set_style_text_color(lbl_credits, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_align(lbl_credits, LV_ALIGN_BOTTOM_MID, 0, -20);
+    lv_obj_align(lbl_credits, LV_ALIGN_BOTTOM_MID, 0, -10);
 
-    // Label di stato
     lbl_splash_status = lv_label_create(scr_splash);
     lv_label_set_text(lbl_splash_status, "");
     lv_obj_set_style_text_color(lbl_splash_status, lv_color_hex(0xE67E22), 0);
-    lv_obj_align(lbl_splash_status, LV_ALIGN_BOTTOM_MID, 0, -60);
+    lv_obj_align(lbl_splash_status, LV_ALIGN_BOTTOM_MID, 0, -40);
 
-    // FIX: Usa lv_screen_load per LVGL 9
     lv_screen_load(scr_splash); 
 }
 
 void ui_splash_config_mode() {
     if (!scr_splash) return;
-
-    // 1. Testo
-    lv_label_set_text(lbl_splash_status, "Continua con la configurazione sul\ntelefono inquadrando questo QR Code");
-    lv_obj_set_style_text_align(lbl_splash_status, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(lbl_splash_status, LV_ALIGN_BOTTOM_MID, 0, -40);
-
-    // 2. QR CODE
-    const char * qr_data = "WIFI:S:Termostato_Setup;T:nopass;;";
-    
-    // In LVGL 9 si crea solo l'oggetto
-    lv_obj_t * qr = lv_qrcode_create(scr_splash);
-    
-    // Poi si impostano i parametri separatamente
-    lv_qrcode_set_size(qr, 140);
-    lv_qrcode_set_dark_color(qr, lv_color_hex(0x000000));
-    lv_qrcode_set_light_color(qr, lv_color_hex(0xFFFFFF));
-    
-    lv_qrcode_update(qr, qr_data, strlen(qr_data));
-    
-    lv_obj_align(qr, LV_ALIGN_CENTER, 0, 90); 
-    lv_obj_set_style_border_color(qr, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_width(qr, 4, 0);
-
+    lv_label_set_text(lbl_splash_status, "Modalita' Access Point Attiva");
+    lv_screen_load(scr_splash);
     lv_timer_handler(); 
 }
+
+// ... (IL RESTO DEL FILE RIMANE INVARIATO) ...
+// Copia qui sotto tutte le altre funzioni (nav_event_cb, error_popup_close_cb, ecc.) 
+// esattamente come nel file precedente.
+// Per brevità non le ripeto tutte se non sono cambiate, 
+// ma nel tuo file finale DEVONO esserci.
 
 // --- CALLBACK DI NAVIGAZIONE CORRETTA ---
 static void nav_event_cb(lv_event_t * e) {
     lv_obj_t * target_screen = (lv_obj_t *)lv_event_get_user_data(e);
     if(target_screen) {
         if(target_screen == scr_impegni) load_impegni_to_ui(); 
-        // FIX: Rimosso lv_scr_load_anim che causava l'errore "too many arguments"
         lv_screen_load(target_screen);
     }
 }
-
-
-// --- CALLBACKS GENERALI ---
 
 static void error_popup_close_cb(lv_event_t * e) {
     lv_obj_t * win = (lv_obj_t *)lv_event_get_user_data(e);
@@ -204,8 +213,6 @@ void show_relay_error_popup() {
     lv_obj_set_style_text_color(l_btn, lv_color_hex(0xFFFFFF), 0);
     lv_obj_center(l_btn);
 }
-
-// --- CALLBACKS BOOST ---
 
 static void boost_plus_cb(lv_event_t * e) {
     boost_minutes_selection += 30;
@@ -303,8 +310,6 @@ static void btn_boost_click_cb(lv_event_t * e) {
     }
 }
 
-// --- HELPER FUNCS ---
-
 void get_time_string_from_slot(int slot, char* buf) {
     if(slot > 48) slot = 48;
     int h = slot / 2;
@@ -364,7 +369,6 @@ void update_main_info_label(bool force) {
 
 void render_weather_icon(lv_obj_t *parent, String code) {
     lv_obj_clean(parent);
-    // Disegna icone semplici con cerchi colorati se non hai immagini
     if (code == "01d" || code == "01n") { // Sole
         lv_obj_t *c = lv_obj_create(parent); lv_obj_set_size(c, 30, 30); lv_obj_set_style_radius(c, LV_RADIUS_CIRCLE, 0); 
         lv_obj_set_style_bg_color(c, lv_color_hex(0xF1C40F), 0); lv_obj_center(c);
@@ -377,7 +381,6 @@ void render_weather_icon(lv_obj_t *parent, String code) {
     }
 }
 
-// ... msgbox callbacks ...
 static void msgbox_close_cb(lv_event_t * e) {
     lv_obj_t * mbox = (lv_obj_t *)lv_event_get_user_data(e);
     if(mbox) lv_msgbox_close(mbox);
@@ -413,10 +416,6 @@ void create_home_button(lv_obj_t *parent) {
     lv_obj_center(label);
     lv_obj_add_event_cb(btn, nav_event_cb, LV_EVENT_CLICKED, scr_main);
 }
-
-// ============================================================================
-//  LOGICA IMPEGNI (CARICAMENTO DA FILE CON FILTRO E PULIZIA)
-// ============================================================================
 
 void load_impegni_to_ui() {
     lv_obj_clean(list_impegni);
@@ -676,10 +675,6 @@ void create_copy_popup(int uiDayIndex) {
     lv_obj_t * l2 = lv_label_create(btn_no); lv_label_set_text(l2, "ANNULLA");
 }
 static void open_copy_popup_cb(lv_event_t * e) { int ui_idx = (int)(intptr_t)lv_event_get_user_data(e); create_copy_popup(ui_idx); }
-
-// ============================================================================
-//  BUILDERS PAGINE
-// ============================================================================
 
 void build_scr_program() {
     lv_obj_set_style_bg_color(scr_program, lv_color_hex(0x101015), 0); 
@@ -980,16 +975,13 @@ void ui_init_all() {
     lv_scr_load(scr_main);
 }
 
-// Aggiorna Meteo Oggi
 void update_current_weather(String temp, String desc, String iconCode) {
     if(lbl_weather_today_val) lv_label_set_text_fmt(lbl_weather_today_val, "%s°C %s", temp.c_str(), desc.c_str());
     if(cont_weather_today_icon) render_weather_icon(cont_weather_today_icon, iconCode);
 }
 
-// Aggiorna Meteo Domani
 void update_forecast_item(int index, String day, String temp, String desc, String iconCode) {
     if (index == 1) { // 1 = Domani
-        // MODIFICA: Ora usa anche 'desc' nel formato
         if(lbl_weather_tmrw_val) lv_label_set_text_fmt(lbl_weather_tmrw_val, "%s°C %s", temp.c_str(), desc.c_str());
         if(cont_weather_tmrw_icon) render_weather_icon(cont_weather_tmrw_icon, iconCode);
     }
@@ -1003,39 +995,29 @@ void update_ui() {
     time(&now);
     struct tm *timeinfo = localtime(&now);
 
-    // Aggiorna Stato Boost
     if (act == scr_main) {
-        
-        // LOGICA COLORE PULSANTE
         if (!thermo.isRelayOnline()) {
-            // RELÈ OFFLINE -> GRIGIO
             lv_obj_set_style_bg_color(btn_boost, lv_color_hex(0x555555), 0); 
             lv_label_set_text(lbl_boost_status, "Rele' Offline");
         } 
         else if (thermo.isBoostActive()) {
-            // BOOST ATTIVO -> ARANCIO
             lv_obj_set_style_bg_color(btn_boost, lv_color_hex(0xE67E22), 0); 
             long rem = thermo.getBoostRemainingSeconds();
             int min = rem / 60;
             lv_label_set_text_fmt(lbl_boost_status, "Che caldo!!!\n-%d min", min);
         } 
         else if (thermo.isHeatingState()) {
-            // RISCALDAMENTO PROGRAMMATO ATTIVO -> ROSSO
-            lv_obj_set_style_bg_color(btn_boost, lv_color_hex(0xC0392B), 0); // Rosso
+            lv_obj_set_style_bg_color(btn_boost, lv_color_hex(0xC0392B), 0); 
             lv_label_set_text(lbl_boost_status, "Che caldo...\n(Spegni)");
         }
         else {
-            // STANDBY (o SPENTO MANUALMENTE) -> BLU
-            // Il comportamento è identico: se clicchi, ti apre il popup per accendere.
             lv_obj_set_style_bg_color(btn_boost, lv_color_hex(0x3498DB), 0); 
             lv_label_set_text(lbl_boost_status, "Brr che freddo!!!");
         }
 
-        // --- Aggiornamento info sensore interno ---
         if(ui_lbl_temp_val) {
             float t = thermo.getCurrentTemp();
             float h = thermo.getHumidity();
-            // Aggiorna solo i valori, le icone sono statiche
             lv_label_set_text_fmt(ui_lbl_temp_val, "%.1f°C", t);
             lv_label_set_text_fmt(ui_lbl_hum_val, "%.0f%%", h);
         }

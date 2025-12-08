@@ -45,7 +45,7 @@ bool setup_network() {
     wm.setConfigPortalTimeout(180); 
 
     // Avvio connessione automatica
-    bool res = wm.autoConnect("Termostato_Setup");
+    bool res = wm.autoConnect("Termostato_Setup", "Andrea6T0P");
 
     if (!res) {
         Serial.println("Connessione fallita o timeout scaduto.");
