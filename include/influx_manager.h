@@ -8,7 +8,7 @@
 class InfluxManager {
 public:
     void begin();
-    void loop(); // Per gestire buffer se necessario
+    void loop(); // Necessario per evitare undefined reference
     
     // Metodi per inviare le categorie della tua tabella
     void reportSystemMetrics();
@@ -18,9 +18,6 @@ public:
     
     // Metodo generico per eventi (UI, Sicurezza, ecc.)
     void reportEvent(const char* category, const char* action, const char* details);
-
-private:
-    bool validateConnection();
 };
 
 extern InfluxManager influx;

@@ -9,35 +9,33 @@ InfluxDBClient influxClient(INFLUXDB_URL, INFLUXDB_ORG, INFLUXDB_BUCKET, INFLUXD
 
 InfluxManager influx;
 
+// Funzione helper interna per debuggare errori di scrittura
+void writePointDebug(Point& p) {
+    if (!influxClient.writePoint(p)) {
+        Serial.print("InfluxDB Write Failed: ");
+        Serial.println(influxClient.getLastErrorMessage());
+    }
+}
+
 void InfluxManager::begin() {
-    // Sincronizzazione oraria precisa
+    // Imposta la sincronizzazione oraria precisa per i timestamp dei dati
     timeSync(configManager.data.timezone, "pool.ntp.org", "time.nist.gov");
 
     // Impostazioni connessione
     influxClient.setInsecure(); 
 
-    // Opzionale: stampa i log della libreria per debug profondo
-    // influxClient.setWriteOptions(WriteOptions().writePrecision(WritePrecision::S).batchSize(1).bufferSize(4));
-
-    if (influxClient.validateConnection()) { 
+    if (influxClient.validateConnection()) {
         Serial.print("Connesso a InfluxDB: ");
-        Serial.println(influxClient.getServerUrl()); 
+        Serial.println(influxClient.getServerUrl());
     } else {
         Serial.print("Errore connessione InfluxDB: ");
-        Serial.println(influxClient.getLastErrorMessage()); 
+        Serial.println(influxClient.getLastErrorMessage());
     }
 }
 
 void InfluxManager::loop() {
-    // Gestione buffer se necessario, per ora vuoto ma richiesto dal .h
-}
-
-// Funzione helper per scrivere e loggare errori
-void writePointWithDebug(Point& p) {
-    if (!influxClient.writePoint(p)) {
-        Serial.print("InfluxDB Write Failed: ");
-        Serial.println(influxClient.getLastErrorMessage());
-    }
+    // Implementazione vuota necessaria per soddisfare il linker
+    // Qui potrai aggiungere gestione buffer/batching in futuro se serve
 }
 
 void InfluxManager::reportSystemMetrics() {
@@ -46,9 +44,10 @@ void InfluxManager::reportSystemMetrics() {
     Point p("system");
     p.addTag("device", DEVICE_NAME);
     
-    p.addField("heap_free", (long)ESP.getFreeHeap()); // Cast espliciti per sicurezza
+    p.addField("heap_free", (long)ESP.getFreeHeap());
     p.addField("heap_max_block", (long)ESP.getMaxAllocHeap());
     
+    // Calcolo percentuale di frammentazione
     float frag = 0.0;
     if (ESP.getFreeHeap() > 0) {
         frag = 100.0 - ((float)ESP.getMaxAllocHeap() / (float)ESP.getFreeHeap() * 100.0);
@@ -57,7 +56,7 @@ void InfluxManager::reportSystemMetrics() {
     p.addField("uptime_sec", (long)(millis() / 1000));
     p.addField("wifi_rssi", (long)WiFi.RSSI());
     
-    writePointWithDebug(p);
+    writePointDebug(p);
 }
 
 void InfluxManager::reportSensorMetrics(float temp, float hum, float target) {
@@ -66,10 +65,12 @@ void InfluxManager::reportSensorMetrics(float temp, float hum, float target) {
     Point p("sensors");
     p.addTag("device", DEVICE_NAME);
 
+    // Evita di inviare NAN se il sensore non è pronto
     if (!isnan(temp)) p.addField("temperature", temp);
     if (!isnan(hum)) p.addField("humidity", hum);
     p.addField("target_temp", target);
     
+    // Calcolo Dew Point (Formula di Magnus)
     if (!isnan(temp) && !isnan(hum)) {
         double a = 17.27;
         double b = 237.7;
@@ -82,7 +83,7 @@ void InfluxManager::reportSensorMetrics(float temp, float hum, float target) {
     if (isnan(heat_need) || heat_need < 0) heat_need = 0;
     p.addField("heating_need", heat_need);
 
-    writePointWithDebug(p);
+    writePointDebug(p);
 }
 
 void InfluxManager::reportRelayState(bool state, const char* source) {
@@ -93,7 +94,7 @@ void InfluxManager::reportRelayState(bool state, const char* source) {
     p.addTag("source", source); 
     p.addField("state", state ? 1 : 0);
     
-    writePointWithDebug(p);
+    writePointDebug(p);
 }
 
 void InfluxManager::reportNetworkMetrics() {
@@ -103,8 +104,9 @@ void InfluxManager::reportNetworkMetrics() {
     p.addTag("device", DEVICE_NAME);
     p.addField("ip", WiFi.localIP().toString());
     p.addField("rssi", WiFi.RSSI());
+    p.addField("gateway", WiFi.gatewayIP().toString());
     
-    writePointWithDebug(p);
+    writePointDebug(p);
 }
 
 void InfluxManager::reportEvent(const char* category, const char* action, const char* details) {
@@ -116,5 +118,5 @@ void InfluxManager::reportEvent(const char* category, const char* action, const 
     p.addTag("action", action);
     p.addField("details", details);
     
-    writePointWithDebug(p);
+    writePointDebug(p);
 }

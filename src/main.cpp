@@ -14,7 +14,7 @@
 #include "secrets.h"
 #include "config.h"
 #include "mqtt_manager.h"
-#include "influx_manager.h" // NUOVO
+#include "influx_manager.h"
 
 #define WDT_TIMEOUT 10
 
@@ -168,6 +168,7 @@ void loop() {
         // 1. Metriche di Sistema (ogni 60 sec)
         if (now - last_influx_system > 60000) {
             influx.reportSystemMetrics();
+            influx.reportNetworkMetrics(); // Aggiunto report rete
             last_influx_system = now;
         }
 
@@ -188,6 +189,18 @@ void loop() {
 
     // 1. GESTIONE TERMOSTATO
     thermo.run();
+
+    // --- RILEVAMENTO CAMBIO STATO RELÈ PER INFLUX ---
+    static bool lastRelayState = false; 
+    bool currentRelayState = thermo.isHeatingState();
+
+    if (currentRelayState != lastRelayState) {
+        // Logga il cambiamento di stato su InfluxDB
+        influx.reportRelayState(currentRelayState, "thermostat_logic");
+        // Aggiorna lo stato precedente
+        lastRelayState = currentRelayState;
+    }
+    // ------------------------------------------------
 
     // 2. GESTIONE WIFI RESILIENCE
     if (millis() - last_wifi_check > 60000) {
@@ -232,14 +245,6 @@ void loop() {
         fetch_weather();
         last_weather_update = current_millis;
     }
-
-    static bool lastRelayState = false; 
-bool currentRelayState = thermo.isHeatingState();
-
-if (currentRelayState != lastRelayState) {
-    influx.reportRelayState(currentRelayState, "thermostat_logic");
-    lastRelayState = currentRelayState;
-}
     
     delay(5);
 }
