@@ -232,6 +232,14 @@ void loop() {
         fetch_weather();
         last_weather_update = current_millis;
     }
+
+    static bool lastRelayState = false; 
+bool currentRelayState = thermo.isHeatingState();
+
+if (currentRelayState != lastRelayState) {
+    influx.reportRelayState(currentRelayState, "thermostat_logic");
+    lastRelayState = currentRelayState;
+}
     
     delay(5);
 }
