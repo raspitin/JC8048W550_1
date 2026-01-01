@@ -6,36 +6,50 @@
 #include <esp32_smartdisplay_dma_helpers.h>
 #include <esp_heap_caps.h>
 
+// Callback di fine frame: segnala a LVGL che il flush è completo.
+// Usato per sincronizzare il refresh ed evitare tearing.
 bool direct_io_frame_trans_done(esp_lcd_panel_handle_t panel, esp_lcd_rgb_panel_event_data_t *edata, void *user_ctx)
 {
-    return false;
+    lv_display_t *display = (lv_display_t *)user_ctx;
+    if (display) {
+        lv_display_flush_ready(display);
+    }
+    return false; // nessuna richiesta di redraw immediato
 }
 
 void direct_io_lv_flush(lv_display_t *display, const lv_area_t *area, uint8_t *px_map)
 {
     esp_lcd_panel_handle_t panel_handle = (esp_lcd_panel_handle_t)display->user_data;
+    // Il flush_ready viene chiamato nel callback on_frame_trans_done (VSYNC)
     ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(panel_handle, area->x1, area->y1, area->x2 + 1, area->y2 + 1, px_map));
-    lv_display_flush_ready(display);
 }
 
 lv_display_t *lvgl_lcd_init()
 {
     lv_display_t *display = lv_display_create(DISPLAY_WIDTH, DISPLAY_HEIGHT);
     
-    // Usiamo UN SOLO buffer in SRAM per risparmiare 64KB di memoria
-    // Questo risolverà i problemi di font (blocchi) e crash
-    uint32_t buffer_rows = 40; 
+    // Buffer più grande per ridurre il tearing (80 righe invece di 40)
+    // Usiamo PSRAM se disponibile per avere più spazio
+    uint32_t buffer_rows = 80; 
     uint32_t buffer_size = DISPLAY_WIDTH * buffer_rows * sizeof(lv_color_t);
     
-    void *drawBuffer = heap_caps_malloc(buffer_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    // Prova prima PSRAM, poi SRAM come fallback
+    void *drawBuffer = heap_caps_malloc(buffer_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!drawBuffer) {
-        log_e("Fallita allocazione SRAM! Riduco a 20 righe.");
-        buffer_rows = 20;
+        log_w("PSRAM non disponibile, uso SRAM con buffer più piccolo");
+        buffer_rows = 40;
         buffer_size = DISPLAY_WIDTH * buffer_rows * sizeof(lv_color_t);
         drawBuffer = heap_caps_malloc(buffer_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!drawBuffer) {
+            log_e("Fallita allocazione SRAM! Riduco a 20 righe.");
+            buffer_rows = 20;
+            buffer_size = DISPLAY_WIDTH * buffer_rows * sizeof(lv_color_t);
+            drawBuffer = heap_caps_malloc(buffer_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        }
     }
 
-    // Configurazione Single Buffer
+    // Configurazione con buffer più grande per ridurre tearing
+    // Manteniamo PARTIAL mode che è più stabile per display RGB parallel
     lv_display_set_buffers(display, drawBuffer, NULL, buffer_size, LV_DISPLAY_RENDER_MODE_PARTIAL);
     
     const esp_lcd_rgb_panel_config_t rgb_panel_config = {
@@ -72,8 +86,8 @@ lv_display_t *lvgl_lcd_init()
             ST7262_PANEL_CONFIG_DATA_B0, ST7262_PANEL_CONFIG_DATA_B1, ST7262_PANEL_CONFIG_DATA_B2, ST7262_PANEL_CONFIG_DATA_B3, ST7262_PANEL_CONFIG_DATA_B4
         },
         .disp_gpio_num = ST7262_PANEL_CONFIG_DISP,
-        .on_frame_trans_done = direct_io_frame_trans_done,
-        .user_ctx = display,
+        .on_frame_trans_done = direct_io_frame_trans_done, // VSYNC callback
+        .user_ctx = display, // serve per chiamare flush_ready
         .flags = {
             .disp_active_low = ST7262_PANEL_CONFIG_FLAGS_DISP_ACTIVE_LOW, 
             .relax_on_idle = ST7262_PANEL_CONFIG_FLAGS_RELAX_ON_IDLE, 

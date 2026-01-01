@@ -4,7 +4,9 @@
 #include <Arduino.h>
 #include <WiFiUdp.h> 
 #include <time.h>
-#include <DHT.h>
+#include <Adafruit_AHTX0.h>
+#include <Adafruit_BMP280.h>
+#include <Wire.h>
 
 class Thermostat {
 public:
@@ -12,14 +14,18 @@ public:
     void setup(); 
     void run();   
 
-    void update(float currentTemp);
+    // Metodi principali
+    void update(float currentTemp); // Usato per test o override manuale valore
     void setTarget(float target);
     float getTarget();
+    
+    // Getter Sensori
     float getCurrentTemp();
     float getHumidity();
-    bool isHeatingState();
-    float readLocalSensor();
+    float getPressure(); // Nuovo
     
+    bool isHeatingState();
+
     // Boost & Manuale
     bool startBoost(int minutes);
     bool stopBoost();
@@ -34,13 +40,26 @@ public:
     bool startHeating();
     bool stopHeating();
 
-    // Heartbeat & Stato
+    // Heartbeat & Stato Relè Remoto
     void checkHeartbeat(bool force = false);
     bool isRelayOnline(); 
     String getRelayIP();
 
 private:
-    float currentTemp = 0.0;
+    // Sensori I2C
+    Adafruit_AHTX0 aht;
+    Adafruit_BMP280 bmp;
+    bool sensorsReady = false;
+    
+    // Caching letture
+    unsigned long last_read_time;
+    float cached_temp;
+    float cached_hum;
+    float cached_press;
+    void readSensors(); // Funzione interna di lettura
+
+    // Stato Termostato
+    float currentTemp = 0.0; // Valore usato per la logica (spesso == cached_temp)
     float currentHumidity = 0.0;
     float targetTemp = 19.0;
     bool isHeating = false;
@@ -51,22 +70,15 @@ private:
     bool _manualOverride = false; 
     int _lastScheduleSlot = -1; 
 
-    // Gestione Rete
+    // Gestione Rete UDP
     WiFiUDP _discoveryUdp;
     IPAddress _relayIP;     
-    bool _relayOnline = false; 
-    
-    // TIMERS
-    unsigned long _lastPacketTime = 0;
-    unsigned long _lastSensorRead = 0; 
-    unsigned long _lastControlTime = 0; // <--- NUOVO: Timer per logica lenta
-    unsigned long _lastHeartbeatTime = 0;
-    bool _firstRun = true;              // <--- NUOVO: Per forzare il primo controllo
+    bool _relayOnline = false;
+    unsigned long _lastHeartbeat = 0;
 
-    bool sendRelayCommand(bool turnOn);
-    void checkDiscovery(); 
-    bool pingRelay();
-    DHT* _dht;
+    void checkDiscovery();
+    void sendDiscovery();
+    float getScheduledTarget();
 };
 
 #endif

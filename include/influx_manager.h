@@ -8,15 +8,14 @@
 class InfluxManager {
 public:
     void begin();
-    void loop(); // Necessario per evitare undefined reference
+    void loop(); 
     
-    // Metodi per inviare le categorie della tua tabella
     void reportSystemMetrics();
-    void reportSensorMetrics(float temp, float hum, float target);
+    // Aggiunto pressure
+    void reportSensorMetrics(float temp, float hum, float pressure, float target);
     void reportRelayState(bool state, const char* source);
     void reportNetworkMetrics();
     
-    // Metodo generico per eventi (UI, Sicurezza, ecc.)
     void reportEvent(const char* category, const char* action, const char* details);
 };
 
